@@ -75,7 +75,7 @@ After `npm run ingest -- --tenant northwind`:
 
 After `npm run ingest -- --tenant northwind --batches 1-4` and then a full run:
 
-- `restatements: 34`. Batch 5 carries 24 email events for 12 to 17 January (already built) and 4 refunds for days already built. Each moved metric has a row in `ops.restatements` with the previous value, the new one, the run, and the cause.
+- `restatements: 48`. Batch 5 carries 24 email events for 12 to 17 January (already built), refunds for days already built, and the orders that let refunds which had been `unattributed` find their channel. Each moved metric has a row in `ops.restatements` with the previous value, the new one, the run, and the cause.
 
 After `npm run ingest -- --tenant lumen`:
 

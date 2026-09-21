@@ -25,8 +25,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5433/dtc
       APP_DATABASE_URL: postgres://app_rw:app_rw@localhost:5433/dtc
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
