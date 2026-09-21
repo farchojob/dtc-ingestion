@@ -230,4 +230,22 @@
   .caret-down {
     border-top: 6px solid var(--ink-2);
   }
+  /* the theme switch: the link shown is always the theme that is NOT on screen */
+  .theme-switch.to-light {
+    display: none;
+  }
+  html.dark .theme-switch.to-light {
+    display: inline-block;
+  }
+  html.dark .theme-switch.to-dark {
+    display: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not(.light) .theme-switch.to-light {
+      display: inline-block;
+    }
+    html:not(.light) .theme-switch.to-dark {
+      display: none;
+    }
+  }
 }

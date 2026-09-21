@@ -29,8 +29,18 @@ export function RoleStrip({ className }: { className?: string }) {
   );
 }
 
-export function TopBar({ tenants, active, theme, back }: { tenants: Tenant[]; active?: string; theme: Theme | null; back: string }) {
-  const next = theme === "dark" ? "light" : "dark";
+/** Two links, one visible: CSS picks by the html class or, with no cookie, by the OS scheme, so the label is always the opposite of what is on screen. */
+function ThemeSwitch({ back }: { back: string }) {
+  const cls = "theme-switch rounded-[4px] border border-hairline-2 px-[7px] py-[3px] eyebrow text-ink-2 hover:border-ink hover:text-ink";
+  return (
+    <>
+      <Link href={`/theme?to=dark&back=${encodeURIComponent(back)}`} className={cn(cls, "to-dark")} title="switch to the dark theme">dark</Link>
+      <Link href={`/theme?to=light&back=${encodeURIComponent(back)}`} className={cn(cls, "to-light")} title="switch to the light theme">light</Link>
+    </>
+  );
+}
+
+export function TopBar({ tenants, active, back }: { tenants: Tenant[]; active?: string; theme: Theme | null; back: string }) {
   return (
     <header className="border-b border-hairline">
       <Container className="flex h-14 items-center justify-between gap-6 md:h-16 md:gap-10">
@@ -50,7 +60,7 @@ export function TopBar({ tenants, active, theme, back }: { tenants: Tenant[]; ac
         <div className="flex items-center gap-[10px]">
           <RoleStrip className="hidden md:inline-flex" />
           <span className="hidden text-hairline-2 md:inline">/</span>
-          <Link href={`/theme?to=${next}&back=${encodeURIComponent(back)}`} className="eyebrow hover:text-ink" title={`switch to ${next} theme`}>{next}</Link>
+          <ThemeSwitch back={back} />
         </div>
       </Container>
     </header>
