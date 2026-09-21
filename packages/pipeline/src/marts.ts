@@ -34,6 +34,7 @@ interface MartSpec {
   compute(tx: Tx, tenantId: string, day: string): Promise<MetricRow[]>;
   current(tx: Tx, tenantId: string, day: string): Promise<MetricRow[]>;
   write(tx: Tx, ctx: RunCtx, day: string, row: MetricRow, complete: boolean): Promise<void>;
+  remove(tx: Tx, tenantId: string, day: string, dimension: string): Promise<void>;
 }
 
 export async function buildMarts(ctx: RunCtx): Promise<MartStats> {
@@ -81,6 +82,21 @@ async function rebuildDay(tx: Tx, ctx: RunCtx, mart: MartSpec, day: string, comp
     }
     await mart.write(tx, ctx, day, row, complete);
   }
+  // A dimension the day no longer has (a refund that was 'unattributed' and now has its channel): the old row
+  // would double count, so it goes, and each of its metrics is restated to zero.
+  const gone = [...previous.keys()].filter((dim) => !fresh.some((r) => r.dimension === dim));
+  for (const dim of gone) {
+    const before = previous.get(dim)!;
+    for (const m of mart.metrics) {
+      if (Number(before[m]) !== 0) {
+        await tx.query(
+          'INSERT INTO ops.restatements (tenant_id, mart, day, dimension, metric, previous, current, run_id, cause) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)',
+          [tenantId, mart.name, day, dim, m, before[m], ctx.runId, cause]);
+        restatements += 1;
+      }
+    }
+    await mart.remove(tx, tenantId, day, dim);
+  }
   return { rows: fresh.length, restatements };
 }
 
@@ -115,6 +131,9 @@ const REVENUE: MartSpec = {
          net = EXCLUDED.net, currency = EXCLUDED.currency, complete = EXCLUDED.complete, built_by_run = EXCLUDED.built_by_run, built_at = now()`,
       [ctx.tenant.id, day, row.dimension, row.orders, row.gross, row.refunds, row.net, ctx.tenant.currency, complete, ctx.runId]);
   },
+  async remove(tx, tenantId, day, dimension) {
+    await tx.query('DELETE FROM mart.daily_revenue WHERE tenant_id = $1 AND day = $2::date AND channel = $3', [tenantId, day, dimension]);
+  },
 };
 
 /** Counts per campaign per day, by event type. Late events change these; the change is recorded. */
@@ -144,6 +163,9 @@ const EMAIL: MartSpec = {
          unsubscribes = EXCLUDED.unsubscribes, built_by_run = EXCLUDED.built_by_run, built_at = now()`,
       [ctx.tenant.id, day, row.dimension, row.delivered, row.opens, row.clicks, row.unsubscribes, ctx.runId]);
   },
+  async remove(tx, tenantId, day, dimension) {
+    await tx.query('DELETE FROM mart.daily_email WHERE tenant_id = $1 AND day = $2::date AND campaign_id = $3', [tenantId, day, dimension]);
+  },
 };
 
 async function deliveriesComplete(tx: Tx, tenantId: string, day: string): Promise<boolean> {
@@ -155,13 +177,25 @@ async function deliveriesComplete(tx: Tx, tenantId: string, day: string): Promis
   return Number(r.rows[0]?.missing ?? 0) === 0;
 }
 
+/** Refunds that were unattributed and whose order has since arrived: release the hold and dirty the refund's
+ *  own day, which nothing else would touch (the order's day is not the refund's day). */
 async function releaseResolvedRefunds(tx: Tx, tenantId: string): Promise<number> {
-  const r = await tx.query(
+  const r = await tx.query<{ ref: string }>(
     `DELETE FROM ops.quarantine q
      WHERE q.tenant_id = $1 AND q.source = 'refunds' AND q.reason = 'unresolvable_reference'
        AND EXISTS (SELECT 1 FROM stg.refunds rf JOIN stg.orders o ON o.tenant_id = rf.tenant_id AND o.order_id = rf.order_id
-                   WHERE rf.tenant_id = q.tenant_id AND rf.refund_id = q.ref)`, [tenantId]);
-  return r.rowCount ?? 0;
+                   WHERE rf.tenant_id = q.tenant_id AND rf.refund_id = q.ref)
+     RETURNING q.ref`, [tenantId]);
+  if (r.rows.length) {
+    await tx.query(
+      `INSERT INTO ops.dirty_days (tenant_id, day, sources)
+       SELECT DISTINCT tenant_id, (refunded_at AT TIME ZONE 'UTC')::date, ARRAY['refunds'] FROM stg.refunds
+       WHERE tenant_id = $1 AND refund_id = ANY($2::text[])
+       ON CONFLICT (tenant_id, day) DO UPDATE
+       SET sources = (SELECT array_agg(DISTINCT x) FROM unnest(ops.dirty_days.sources || EXCLUDED.sources) AS x)`,
+      [tenantId, r.rows.map((x) => x.ref)]);
+  }
+  return r.rows.length;
 }
 
 async function quarantineOrphanRefunds(tx: Tx, tenantId: string): Promise<number> {

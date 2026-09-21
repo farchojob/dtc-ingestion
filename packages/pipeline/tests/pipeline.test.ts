@@ -63,8 +63,8 @@ test('late records rebuild days that were already built and leave a restatement 
   const before = await adminQuery<Record<string, string>>(
     "SELECT day::text AS day, channel, orders::text, gross::text, refunds::text, net::text FROM mart.daily_revenue WHERE tenant_id = 'northwind'");
   const orphansBefore = early.marts!.orphanRefunds;
-  const [{ n: realOrphansBefore }] = await adminQuery<{ n: number }>(
-    "SELECT count(*)::int AS n FROM ops.quarantine WHERE tenant_id = 'northwind' AND reason = 'unresolvable_reference' AND ref LIKE 'rf-orphan-%'");
+  const realOrphansBefore = (await adminQuery<{ n: number }>(
+    "SELECT count(*)::int AS n FROM ops.quarantine WHERE tenant_id = 'northwind' AND reason = 'unresolvable_reference' AND ref LIKE 'rf-orphan-%'"))[0]!.n;
 
   const late = await runTenant(config, 'northwind');   // batch 5 of every source arrives
   expect(late.marts!.restatements).toBeGreaterThan(0);
@@ -77,16 +77,23 @@ test('late records rebuild days that were already built and leave a restatement 
     "SELECT day::text AS day, channel, orders::text, gross::text, refunds::text, net::text FROM mart.daily_revenue WHERE tenant_id = 'northwind'");
   for (const r of revenue) {
     // refunds delivered in batches 1-4 for orders that only arrive in batch 5 had built refund-only days: those move too
-    const was = before.find((x) => x.day === r.day && x.channel === r.dimension)!;
-    const is = now.find((x) => x.day === r.day && x.channel === r.dimension)!;
+    const was = before.find((x) => x.day === r.day && x.channel === r.dimension);
+    const is = now.find((x) => x.day === r.day && x.channel === r.dimension);
+    if (!was) throw new Error(`no previous mart row for restatement ${JSON.stringify(r)}`);
     expect(Number(was[r.metric])).toBe(Number(r.previous));
-    expect(Number(is[r.metric])).toBe(Number(r.current));
+    if (is) expect(Number(is[r.metric])).toBe(Number(r.current));
+    else expect(Number(r.current)).toBe(0);    // the dimension left the day (a refund found its channel): restated to zero and removed
   }
   // refunds that arrived before their order were unattributed and quarantined; once the order lands they are released
   expect(orphansBefore).toBeGreaterThan(realOrphansBefore);                 // some refunds simply beat their order
   expect(late.marts!.orphansResolved).toBe(orphansBefore - realOrphansBefore);
   expect(await adminQuery("SELECT count(*)::int AS n, bool_and(ref LIKE 'rf-orphan-%') AS all_real FROM ops.quarantine WHERE tenant_id = 'northwind' AND reason = 'unresolvable_reference'"))
     .toEqual([{ n: 6, all_real: true }]);
+  // the 'unattributed' rows those refunds had built are gone (restated to zero), and every day is complete again
+  expect(await adminQuery("SELECT sum(refunds)::text AS refunds FROM mart.daily_revenue WHERE tenant_id = 'northwind' AND channel = 'unattributed'"))
+    .toEqual([{ refunds: '1467.86' }]);   // rf-orphan-01..06 only
+  expect(await adminQuery("SELECT count(*)::int AS n FROM mart.daily_revenue WHERE tenant_id = 'northwind' AND NOT complete")).toEqual([{ n: 0 }]);
+  expect(rs.filter((r) => r.dimension === 'unattributed' && r.current === '0.00').length).toBeGreaterThan(0);
 
   const emailDays = [...new Set(rs.filter((r) => r.mart === 'daily_email').map((r) => r.day))].sort();
   expect(emailDays.length).toBeGreaterThan(0);

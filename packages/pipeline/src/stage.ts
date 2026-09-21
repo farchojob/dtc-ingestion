@@ -44,8 +44,8 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
   const table = TABLES[spec.source];
   if (!table) throw new Error(`no staging table declared for source ${spec.source}`);
   const stats: StageStats = { source: spec.source, files: 0, inserted: 0, updated: 0, unchanged: 0, quarantined: 0, conflicts: 0, dirtyDays: 0 };
-  const pending = await withTenant(tenant.id, async (tx) => (await tx.query<{ id: string; schema_version: string }>(
-    "SELECT id, schema_version FROM raw.file_loads WHERE tenant_id = $1 AND source = $2 AND status = 'loaded' AND staged_at IS NULL ORDER BY id",
+  const pending = await withTenant(tenant.id, async (tx) => (await tx.query<{ id: string; schema_version: string; batch: number | null }>(
+    "SELECT id, schema_version, batch FROM raw.file_loads WHERE tenant_id = $1 AND source = $2 AND status = 'loaded' AND staged_at IS NULL ORDER BY id",
     [tenant.id, spec.source])).rows);
 
   for (const file of pending) {
@@ -89,12 +89,26 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
            SET sources = (SELECT array_agg(DISTINCT x) FROM unnest(ops.dirty_days.sources || EXCLUDED.sources) AS x), marked_at = now()`,
           [tenant.id, day, spec.source]);
       }
+      await markCoveredDaysDirty(tx, tenant.id, spec.source, file.batch);
       await tx.query('UPDATE raw.file_loads SET staged_at = now() WHERE id = $1', [fileLoadId]);
     });
     stats.files += 1;
     stats.dirtyDays += dirty.size;
   }
   return stats;
+}
+
+/** A delivery that arrives makes every day it covers dirty, so `complete` is recomputed even for days it holds no rows for. */
+async function markCoveredDaysDirty(tx: Tx, tenantId: string, source: string, batch: number | null): Promise<void> {
+  if (batch === null) return;
+  await tx.query(
+    `INSERT INTO ops.dirty_days (tenant_id, day, sources)
+     SELECT e.tenant_id, d::date, ARRAY[e.source]
+     FROM ops.expected_deliveries e CROSS JOIN LATERAL generate_series(e.covers_from, e.covers_to, interval '1 day') AS d
+     WHERE e.tenant_id = $1 AND e.source = $2 AND e.batch = $3
+     ON CONFLICT (tenant_id, day) DO UPDATE
+     SET sources = (SELECT array_agg(DISTINCT x) FROM unnest(ops.dirty_days.sources || EXCLUDED.sources) AS x)`,
+    [tenantId, source, batch]);
 }
 
 /** Apply the source's field specs and the tenant's normalisation to one raw payload. */

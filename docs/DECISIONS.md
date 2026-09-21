@@ -73,3 +73,15 @@ Why: the brief asks for a recorded demo of what works; a screen that shows a res
 Chosen: one `npm install` at the root; `docker compose up -d` for Postgres 16; everything else is `npm run <script>`.
 Rejected: pnpm or bun (one more tool to install on a clean machine); running Postgres outside Docker.
 Why: the evaluators will run it from a clean checkout; the fewer prerequisites, the better.
+
+## D13. A refund that arrives before its order is unattributed, then moves
+
+Taken while building. Refund batches are not ordered by anything useful (F4), so in a batch-by-batch replay a refund can land before the order it belongs to. Chosen: it counts under `unattributed` for its day and is quarantined as `unresolvable_reference`; when the order arrives, the next rebuild re-attributes it to the order's channel, records the restatement, and releases the quarantine entry. Rejected: holding the refund out of the marts until the order shows up (the tenant total would be wrong in the meantime) or attributing it to the order's channel retroactively without a restatement row (the number would move without a trace). The six placeholder refunds (`rf-orphan-*`) never resolve and stay quarantined, which is the point: they are the ones to ask the client about.
+
+## D14. Email metrics are a stored mart, not a view
+
+Taken after the first end-to-end run. The 24 late events in northwind's batch 5 (F3) are the fixture's designed late-arrival case, and with `daily_email` as a view they would have changed the numbers silently. Chosen: `mart.daily_email` is a table rebuilt per dirty day with the same restatement mechanism as revenue. `daily_marketing` stays a view because spend has no derived metric to restate yet, and because as a view it can generate the NULL rows for days whose batch never arrived (D8). Cost: one migration and forty lines; the two stored marts share one rebuild function.
+
+## D15. Commit chunks of 100 rows
+
+The fixtures are small enough that a 500-row chunk commits most files whole, which makes a resumed load look like a restart. 100 keeps the resume point visible (the crash test resumes batch_02 from line 100) at no cost here. For a real feed this is a tuning knob, not a design choice.

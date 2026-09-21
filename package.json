@@ -20,7 +20,8 @@
     "check:deliveries": "npm run --workspace packages/pipeline --silent dtc -- check deliveries",
     "check:finance": "npm run --workspace packages/pipeline --silent dtc -- check finance",
     "test": "npm run --workspace packages/pipeline test",
-    "typecheck": "npm run --workspace packages/pipeline typecheck",
-    "console": "npm run --workspace apps/console dev"
+    "typecheck": "npm run --workspace packages/pipeline typecheck && npm run --workspace apps/ops-console typecheck",
+    "console": "npm run --workspace apps/ops-console dev",
+    "console:build": "npm run --workspace apps/ops-console build"
   }
 }
