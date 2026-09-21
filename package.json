@@ -17,7 +17,7 @@
     "migrate": "npm run --workspace packages/pipeline migrate",
     "dtc": "npm run --workspace packages/pipeline --silent dtc --",
     "ingest": "npm run --workspace packages/pipeline --silent dtc -- run",
-    "demo": "npm run db:reset && npm run migrate && npm run ingest -- --tenant northwind --batches 1-4 && npm run ingest -- --tenant northwind && (npm run ingest -- --tenant lumen --crash-after-rows 500 || true) && npm run ingest -- --tenant lumen",
+    "demo": "npm run db:reset && npm run migrate && npm run ingest -- --tenant northwind --batches 1-4 && npm run ingest -- --tenant northwind && (npm run ingest -- --tenant lumen --crash-after-rows 500 || true) && npm run ingest -- --tenant lumen && npm run ingest -- --tenant acme",
     "check:deliveries": "npm run --workspace packages/pipeline --silent dtc -- check deliveries",
     "check:finance": "npm run --workspace packages/pipeline --silent dtc -- check finance",
     "test": "npm run --workspace packages/pipeline test",

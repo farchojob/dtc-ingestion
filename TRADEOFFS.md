@@ -44,6 +44,8 @@ Where it is actually enforced rather than intended: the tenant id lands on every
 
 What a new client can break: a raw label not in their normalisation map quarantines those rows (named in the run report) rather than mis-bucketing them; a column name not declared for a source quarantines the file. Both are the intended failure mode. What they cannot do from their own file is affect another tenant.
 
+I did it rather than asserting it. Acme (GBP, its own labels) is commit `7238662`: one YAML, its files, eight manifest entries, no code. The first run held 12 spend rows because I had left `tiktok` out of the platform map; fixing the map and rerunning released them, and two `Pinterest` orders stay held because nobody has said what Pinterest is. Following my own onboarding guide exposed two defects I would not have found otherwise (rerunning after a config fix did not retry quarantined rows; the validator resolved paths from the wrong directory), both fixed in `39c5f5d` with a test.
+
 ## With another week
 
 1. Make `unknown_schema` and `late_arrivals` real policy switches with a second implementation each (`fail`, `freeze`), and a test per combination.

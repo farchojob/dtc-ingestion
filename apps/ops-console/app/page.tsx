@@ -9,7 +9,7 @@ export default async function Home() {
   const tenants = await listTenants();
   const cards = await Promise.all(tenants.map(async (t) => ({ tenant: t, o: await overview(t.id) })));
   return (
-    <Container className="pb-16 pt-8 md:pt-[52px]">
+    <Container className="pb-16 pt-8 md:pt-13">
       <h1 className="text-[28px] font-semibold tracking-[-0.03em] text-ink md:text-[32px]">Tenants</h1>
       <p className="mt-3 text-[14.5px] text-ink-muted">Each card is read inside that tenant&apos;s context. Nothing on this page joins across tenants.</p>
       {cards.length === 0 ? (

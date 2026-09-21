@@ -20,6 +20,7 @@ npm run db:up            # Postgres 16 in Docker, waits until healthy
 npm run migrate          # schemas, tables, the app role, row-level security
 npm run ingest -- --tenant northwind
 npm run ingest -- --tenant lumen
+npm run ingest -- --tenant acme     # the third tenant: configuration only, see Tenancy below
 npm run check:deliveries # exit 1: lumen/ad_spend/batch_03 never arrived
 npm test                 # 7 tests against a separate database, ~10 s
 npm run console          # http://localhost:4010
@@ -94,7 +95,7 @@ After `npm run ingest -- --tenant lumen`:
 
 Every table has `tenant_id`. Row-level security is enabled and forced on all of them; the application role (`app_rw`) cannot bypass it; the only database entry point in the code is `withTenant(tenantId, fn)`, which sets `app.tenant_id` for one transaction. A query with no tenant context returns no rows; an insert for another tenant is refused by the policy. The console reads through the same helper. `tests/pipeline.test.ts` proves all four. There is no `if (tenant === ...)` in the code: `grep -rn "northwind\|lumen" packages/pipeline/src` returns nothing.
 
-Adding a client is a YAML file: `docs/ONBOARDING.md`.
+Adding a client is a YAML file: `docs/ONBOARDING.md`. It has been done once already: the third tenant, Acme (GBP), is commit `7238662`, which touches `config/tenants/acme.yaml`, `fixtures/acme/` and the manifest and nothing else. Its labels differ from both other tenants and are mapped in that file; two of its orders carry a label the map does not know and sit in quarantine, named in the run report, which is the intended failure mode. Following the onboarding guide for real exposed two defects, fixed in `39c5f5d`: a config fix did not release rows already quarantined, and the validator resolved paths from the wrong directory.
 
 ## What is finished and what is not
 
