@@ -17,13 +17,14 @@ I chose these because they are where the fixtures are hardest (F2, F3, F4 in the
 |---|---|---|
 | Raw ingestion | finished | file hash, chunked resumable loads, duplicate detection, schema events, file quarantine; test 2 |
 | Staging | finished | declared aliases, typing, per-tenant normalisation, row quarantine with reasons, conflicts kept, dirty days; tests 3 and 6 |
-| Replay and late arrivals | finished | restatements for two stored marts, dimension removal restated to zero, refunds that beat their order released later; tests 1 and 4 |
+| Replay and late arrivals | finished | restatements for two stored marts, dimension removal restated to zero, refunds that beat their order released later; both policies (`restate`, `freeze`) as one per-tenant switch decided at staging time; tests 1, 4 and 8 |
 | Tenant isolation | finished | RLS on 15 tables, security_invoker views, one entry point, config-only onboarding; test 5 |
 | Missing deliveries | finished | manifest as expectations, `check deliveries` exits non-zero, NULL spend with `complete = false`; test 7 |
 | Daily revenue mart | finished | gross by order day, refunds by refund day attributed to the order's channel, unattributed line, completeness flag |
 | Daily email mart | finished, thin | counts per campaign per day; no rates, no attribution |
 | Marketing mart | a view | spend per campaign per day with completeness; no join to revenue or email (D10) |
 | Finance reconciliation | a check | gross ties to the cent on 60 of 60 days; net and currency are questions for the client, not code |
+| Schema drift | finished | declared aliases adapted and logged; unknown headers quarantined or, per tenant policy, the run stopped; tests 6 and 9 |
 | Console | read-only | five views per tenant; no actions, no auth beyond the database role |
 | Scheduling, watching a drop folder, alerting | not built | runs are invoked; the delivery check is the alert, on exit code |
 
@@ -31,7 +32,6 @@ I chose these because they are where the fixtures are hardest (F2, F3, F4 in the
 
 - Attribution between email campaigns and ad spend. The ids do not join (`cmp_100..111` in email for both tenants; `cmp_100..102` and `camp-400..402` in spend), and lumen's email campaigns carry northwind-looking ids. Joining on the three strings that happen to coincide would be a guess presented as a feature. `campaign_map` in the tenant config is where the client's answer goes.
 - Currency conversion. Each tenant reports in its own currency. Lumen's finance file says USD over EUR figures; that is a question, and converting at a rate I invented would bury it.
-- A freeze policy for late arrivals (book the late record on the day it arrived, never touch the reported day). It is the right policy for a ledger and the wrong default for analytics marts. It is a per-tenant policy value waiting for a second implementation, not a fork.
 - Streaming or incremental staging. Staging loads the tenant's existing keys per file (at most a few thousand rows here) and compares hashes in memory. At real volume that becomes a per-chunk lookup; the shape of the code does not change.
 - An ORM, a job queue, an API. None of them would have made the two chosen areas deeper.
 - Ingesting `finance_summary.csv`. It is the client's claim about the numbers, not a source of them; it is read by the reconciliation check and nowhere else.
@@ -48,7 +48,7 @@ I did it rather than asserting it. Acme (GBP, its own labels) is commit `7238662
 
 ## With another week
 
-1. Make `unknown_schema` and `late_arrivals` real policy switches with a second implementation each (`fail`, `freeze`), and a test per combination.
+1. A `freeze` variant that also freezes the channel split of refunds resolved later (today the hold is released but the day is left alone), and a per-source policy where a tenant wants orders restated but spend frozen.
 2. Turn the delivery check into freshness monitoring: expected cadence per source, hours since the last file, an alert when a day closes without its batch, and the console showing it.
 3. Attribution once the client supplies the campaign map, and ROAS in the marketing mart with the completeness flag propagated (NULL spend stays NULL through the ratio).
 4. Staging at volume: per-chunk existence checks, `COPY` into raw, an index on `(tenant_id, day)` for the marts, and a benchmark on a million-row month.

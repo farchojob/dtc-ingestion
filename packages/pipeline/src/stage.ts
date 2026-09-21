@@ -8,6 +8,12 @@
  * - A row that cannot be typed, or carries a raw value with no entry in the tenant's normalisation
  *   map, goes to ops.quarantine with the reason and is skipped. The file still completes.
  * - Every inserted or changed row marks its UTC day dirty for the mart build.
+ * - Each record gets a posting_day (migration 003). Under `late_arrivals: restate` it is the record's own
+ *   day. Under `freeze` it is the record's own day unless that day is already closed for the source: the
+ *   delivery the manifest says should carry it has loaded before this file. A record for a closed day is
+ *   booked on the day it arrived; the reported day stays as reported and the record is visible in
+ *   mart.late_postings. The marts group by posting_day and never look at the policy. Freeze therefore
+ *   needs expected deliveries; a source with no manifest entries never closes a day.
  * - Rows quarantined for a reason that config can fix (an unmapped label, a bad value) are retried on
  *   every run with the current config; the ones that now map are staged and their hold is released.
  *   That is what makes "add the label to the tenant file and rerun" true.
@@ -28,6 +34,31 @@ const TABLES: Record<string, TableSpec> = {
   refunds: { table: 'stg.refunds', key: ['refund_id'], columns: ['refund_id', 'refunded_at', 'order_id', 'amount', 'currency'] },
 };
 
+interface Delivery { fileLoadId: number; from: string; to: string }
+
+/** The loaded deliveries of a source with the window each was expected to cover. */
+async function loadedDeliveries(tx: Tx, tenantId: string, source: string): Promise<Delivery[]> {
+  const r = await tx.query<{ id: string; covers_from: string; covers_to: string }>(
+    `SELECT f.id, to_char(e.covers_from, 'YYYY-MM-DD') AS covers_from, to_char(e.covers_to, 'YYYY-MM-DD') AS covers_to
+     FROM ops.expected_deliveries e JOIN raw.file_loads f ON f.tenant_id = e.tenant_id AND f.source = e.source AND f.batch = e.batch
+     WHERE e.tenant_id = $1 AND e.source = $2 AND f.status = 'loaded'`, [tenantId, source]);
+  return r.rows.map((x) => ({ fileLoadId: Number(x.id), from: x.covers_from, to: x.covers_to }));
+}
+
+/** A day is closed for a source when a delivery other than this file was expected to carry it and has loaded. */
+function isClosed(day: string, fileLoadId: number, deliveries: Delivery[]): boolean {
+  return deliveries.some((d) => d.fileLoadId !== fileLoadId && d.from <= day && day <= d.to);
+}
+
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** The day this record is booked on, per the tenant's policy. */
+function postingDay(tenant: TenantSpec, eventDay: string, fileLoadId: number, deliveries: Delivery[]): string {
+  return tenant.policies.late_arrivals === 'freeze' && isClosed(eventDay, fileLoadId, deliveries) ? todayUtc() : eventDay;
+}
+
 export interface StageStats {
   source: string;
   files: number;
@@ -36,6 +67,7 @@ export interface StageStats {
   unchanged: number;
   quarantined: number;
   released: number;     // previously quarantined rows that map under the current config
+  postedLate: number;   // records booked on their arrival day because their own day was frozen
   conflicts: number;
   dirtyDays: number;
 }
@@ -49,7 +81,7 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
   const tenant = ctx.tenant;
   const table = TABLES[spec.source];
   if (!table) throw new Error(`no staging table declared for source ${spec.source}`);
-  const stats: StageStats = { source: spec.source, files: 0, inserted: 0, updated: 0, unchanged: 0, quarantined: 0, released: 0, conflicts: 0, dirtyDays: 0 };
+  const stats: StageStats = { source: spec.source, files: 0, inserted: 0, updated: 0, unchanged: 0, quarantined: 0, released: 0, postedLate: 0, conflicts: 0, dirtyDays: 0 };
   const pending = await withTenant(tenant.id, async (tx) => (await tx.query<{ id: string; schema_version: string; batch: number | null }>(
     "SELECT id, schema_version, batch FROM raw.file_loads WHERE tenant_id = $1 AND source = $2 AND status = 'loaded' AND staged_at IS NULL ORDER BY id",
     [tenant.id, spec.source])).rows);
@@ -61,6 +93,7 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
       const records = (await tx.query<{ line_no: number; payload: Record<string, unknown> }>(
         'SELECT line_no, payload FROM raw.records WHERE file_load_id = $1 ORDER BY line_no', [fileLoadId])).rows;
       const existing = await existingHashes(tx, tenant.id, table);
+      const deliveries = tenant.policies.late_arrivals === 'freeze' ? await loadedDeliveries(tx, tenant.id, spec.source) : [];
       for (const rec of records) {
         const outcome = mapRow(spec, tenant, file.schema_version, rec.payload, `${fileLoadId}:${rec.line_no}`);
         if (!outcome.ok) {
@@ -71,21 +104,23 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
         const key = table.key.map((k) => outcome.row[k]).join('|');
         const hash = sha256Json(table.columns.map((c) => outcome.row[c]));
         const prior = existing.get(key);
+        const day = postingDay(tenant, outcome.day, fileLoadId, deliveries);
         if (prior === undefined) {
-          await upsert(tx, tenant.id, table, outcome.row, hash, fileLoadId);
+          await upsert(tx, tenant.id, table, outcome.row, hash, fileLoadId, day);
           existing.set(key, hash);
           stats.inserted += 1;
-          dirty.add(outcome.day);
+          if (day !== outcome.day) stats.postedLate += 1;
+          dirty.add(day);
         } else if (prior === hash) {
           await touch(tx, tenant.id, table, outcome.row, fileLoadId);
           stats.unchanged += 1;
         } else {
           await recordConflict(tx, tenant.id, spec.source, key, fileLoadId, table, outcome.row);
-          await upsert(tx, tenant.id, table, outcome.row, hash, fileLoadId);
+          await upsert(tx, tenant.id, table, outcome.row, hash, fileLoadId, day);
           existing.set(key, hash);
           stats.updated += 1;
           stats.conflicts += 1;
-          dirty.add(outcome.day);
+          dirty.add(day);
         }
       }
       for (const day of dirty) {
@@ -118,6 +153,7 @@ async function retryQuarantined(ctx: RunCtx, spec: SourceSpec, table: TableSpec,
       [tenant.id, spec.source, RETRIABLE_REASONS])).rows;
     if (!held.length) return;
     const existing = await existingHashes(tx, tenant.id, table);
+    const deliveries = tenant.policies.late_arrivals === 'freeze' ? await loadedDeliveries(tx, tenant.id, spec.source) : [];
     const dirty = new Set<string>();
     for (const h of held) {
       const outcome = mapRow(spec, tenant, h.schema_version, h.payload, `${h.file_load_id}:${h.line_no}`);
@@ -125,9 +161,11 @@ async function retryQuarantined(ctx: RunCtx, spec: SourceSpec, table: TableSpec,
       const key = table.key.map((k) => outcome.row[k]).join('|');
       const hash = sha256Json(table.columns.map((c) => outcome.row[c]));
       if (existing.get(key) !== hash) {
-        await upsert(tx, tenant.id, table, outcome.row, hash, Number(h.file_load_id));
+        const day = postingDay(tenant, outcome.day, Number(h.file_load_id), deliveries);
+        await upsert(tx, tenant.id, table, outcome.row, hash, Number(h.file_load_id), day);
         existing.set(key, hash);
-        dirty.add(outcome.day);
+        if (day !== outcome.day) stats.postedLate += 1;
+        dirty.add(day);
       }
       await tx.query('DELETE FROM ops.quarantine WHERE id = $1', [h.id]);
       stats.released += 1;
@@ -195,9 +233,10 @@ async function existingHashes(tx: Tx, tenantId: string, table: TableSpec): Promi
   return new Map(r.rows.map((x) => [x.k, x.content_hash]));
 }
 
-async function upsert(tx: Tx, tenantId: string, table: TableSpec, row: Mapped, hash: string, fileLoadId: number): Promise<void> {
-  const cols = ['tenant_id', ...table.columns, 'content_hash', 'first_file_load_id', 'last_file_load_id'];
-  const vals = [tenantId, ...table.columns.map((c) => row[c] ?? null), hash, fileLoadId, fileLoadId];
+/** posting_day is written on insert and never moved by a re-delivery: once booked, a record stays where it was booked. */
+async function upsert(tx: Tx, tenantId: string, table: TableSpec, row: Mapped, hash: string, fileLoadId: number, postingDayValue: string): Promise<void> {
+  const cols = ['tenant_id', ...table.columns, 'posting_day', 'content_hash', 'first_file_load_id', 'last_file_load_id'];
+  const vals = [tenantId, ...table.columns.map((c) => row[c] ?? null), postingDayValue, hash, fileLoadId, fileLoadId];
   const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
   const updates = [...table.columns.map((c) => `${c} = EXCLUDED.${c}`), 'content_hash = EXCLUDED.content_hash',
     'last_file_load_id = EXCLUDED.last_file_load_id', `times_seen = ${table.table}.times_seen + 1`, 'updated_at = now()'].join(', ');

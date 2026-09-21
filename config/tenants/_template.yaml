@@ -28,5 +28,5 @@ expected_deliveries:
   manifest: manifest.json     # a manifest listing what should arrive; entries for this tenant id are used
 
 policies:
-  late_arrivals: restate      # restate: rebuild the day and record the previous number
+  late_arrivals: restate      # restate: rebuild the day and record the previous number; freeze: never change a delivered day, book late records on arrival day
   unknown_schema: quarantine  # quarantine: hold files with an unrecognised header; fail: stop the run

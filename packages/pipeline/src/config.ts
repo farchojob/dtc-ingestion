@@ -57,7 +57,7 @@ const TenantSchema = z.object({
   campaign_map: z.record(z.string()).default({}),
   expected_deliveries: z.object({ manifest: z.string() }).strict().optional(),
   policies: z.object({
-    late_arrivals: z.enum(['restate']),
+    late_arrivals: z.enum(['restate', 'freeze']),
     unknown_schema: z.enum(['quarantine', 'fail']),
   }).strict(),
 }).strict();

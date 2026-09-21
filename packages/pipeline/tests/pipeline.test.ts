@@ -172,3 +172,58 @@ test('a batch that never arrived is named, its days carry NULL spend, and orphan
     .toEqual([{ refunds: '1434.06' }]);   // rf-orphan-01..06 in the lumen refund batches
   expect(await adminQuery("SELECT count(*)::int AS n FROM ops.quarantine WHERE tenant_id = 'lumen' AND reason = 'unresolvable_reference'")).toEqual([{ n: 6 }]);
 });
+
+test('under late_arrivals: freeze a reported day is never rebuilt; late records post to their arrival day (D18)', async () => {
+  const frozen = loadConfig();
+  frozen.tenants.northwind!.policies.late_arrivals = 'freeze';
+  const early = await runTenant(frozen, 'northwind', { batches: '1-4' });
+  expect(early.marts?.restatements).toBe(0);
+  const before = await adminQuery<Record<string, string>>(
+    "SELECT day::text AS day, channel, orders::text, gross::text, refunds::text, net::text FROM mart.daily_revenue WHERE tenant_id = 'northwind' AND day <= '2026-01-29' ORDER BY day, channel");
+  const emailBefore = await adminQuery<Record<string, string>>(
+    "SELECT day::text AS day, campaign_id, delivered::text, opens::text FROM mart.daily_email WHERE tenant_id = 'northwind' AND day <= '2026-01-29' ORDER BY day, campaign_id");
+
+  const late = await runTenant(frozen, 'northwind');   // batch 5 arrives: 24 email events for 12-17 Jan, refunds for days already closed
+  const today = new Date().toISOString().slice(0, 10);
+  expect(late.stage.find((s) => s.source === 'email_events')!.postedLate).toBe(24);
+  expect(late.stage.find((s) => s.source === 'refunds')!.postedLate).toBeGreaterThan(0);
+
+  // a closed day (batches 1-4 cover 6 to 29 Jan for every source) never moves; open days may still fill in
+  expect(await adminQuery("SELECT count(*)::int AS n FROM ops.restatements WHERE tenant_id = 'northwind' AND day <= '2026-01-29'")).toEqual([{ n: 0 }]);
+  expect(await adminQuery("SELECT count(*)::int AS n FROM ops.restatements WHERE tenant_id = 'northwind' AND mart = 'daily_email'")).toEqual([{ n: 0 }]);
+
+  // every closed day is byte-for-byte what it was
+  expect(await adminQuery("SELECT day::text AS day, channel, orders::text, gross::text, refunds::text, net::text FROM mart.daily_revenue WHERE tenant_id = 'northwind' AND day <= '2026-01-29' ORDER BY day, channel")).toEqual(before);
+  expect(await adminQuery("SELECT day::text AS day, campaign_id, delivered::text, opens::text FROM mart.daily_email WHERE tenant_id = 'northwind' AND day <= '2026-01-29' ORDER BY day, campaign_id")).toEqual(emailBefore);
+
+  // the late records exist, on today's row, and the audit view says where each one came from
+  const posted = await adminQuery<{ source: string; n: number; days: number }>(
+    "SELECT source, count(*)::int AS n, count(DISTINCT event_day)::int AS days FROM mart.late_postings WHERE tenant_id = 'northwind' GROUP BY source ORDER BY source");
+  expect(posted.find((p) => p.source === 'email_events')).toMatchObject({ n: 24, days: 6 });
+  expect(await adminQuery(`SELECT bool_and(posting_day = '${today}') AS today, min(event_day)::text AS first, max(event_day)::text AS last FROM mart.late_postings WHERE tenant_id = 'northwind' AND source = 'email_events'`))
+    .toEqual([{ today: true, first: '2026-01-12', last: '2026-01-17' }]);
+  expect(await adminQuery(`SELECT sum(delivered + opens + clicks + unsubscribes)::int AS events FROM mart.daily_email WHERE tenant_id = 'northwind' AND day = '${today}'`)).toEqual([{ events: 24 }]);
+
+  // the totals are the same under both policies; only the day they sit on differs
+  expect(await adminQuery("SELECT sum(net)::text AS net, sum(gross)::text AS gross FROM mart.daily_revenue WHERE tenant_id = 'northwind'")).toEqual([{ net: '75838.14', gross: '79303.38' }]);
+});
+
+test('under unknown_schema: fail a file whose header matches no declared field set stops the run, loading nothing from it (D4)', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dtc-fixtures-'));
+  fs.cpSync(config.fixturesDir, tmp, { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'northwind/ad_spend/batch_06.csv'), 'date,campaign_id,platform,cost\n2026-02-05,cmp_100,facebook,1.00\n');
+  process.env.DTC_FIXTURES_DIR = tmp;
+  try {
+    const strict = loadConfig();
+    strict.tenants.northwind!.policies.unknown_schema = 'fail';
+    const failure = await runTenant(strict, 'northwind', { source: 'ad_spend' }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(RunFailed);
+    expect((failure as RunFailed).cause.message).toMatch(/batch_06\.csv: required fields spend not found in columns \[date, campaign_id, platform, cost\] \(policy: fail\)/);
+    expect(await adminQuery("SELECT status FROM ops.runs WHERE tenant_id = 'northwind' ORDER BY id DESC LIMIT 1")).toEqual([{ status: 'failed' }]);
+    expect(await adminQuery("SELECT count(*)::int AS n FROM raw.file_loads WHERE tenant_id = 'northwind' AND path LIKE '%batch_06%'")).toEqual([{ n: 0 }]);
+    expect(await adminQuery("SELECT count(*)::int AS n FROM raw.file_loads WHERE tenant_id = 'northwind' AND status = 'loaded'")).toEqual([{ n: 5 }]);   // the five good files before it
+  } finally {
+    delete process.env.DTC_FIXTURES_DIR;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

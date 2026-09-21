@@ -32,6 +32,7 @@ Fill in:
 | `normalize.platform` | same, for the ad platforms |
 | `normalize.event_type` | same, for email event types |
 | `campaign_map` | leave empty unless the client tells you which email campaign corresponds to which ad campaign |
+| `policies.late_arrivals` | `restate` (a late record rebuilds its day and the previous numbers are kept in `ops.restatements`) or `freeze` (a day the manifest says was already delivered never changes; the late record is booked on the day it arrived and listed in `mart.late_postings`). `freeze` needs manifest entries for the source |
 | `policies.unknown_schema` | `quarantine` (hold the file, keep going) or `fail` (stop the run) when a file's header matches no declared column names |
 
 Check it before touching the database:

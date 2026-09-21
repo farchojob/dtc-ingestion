@@ -11,6 +11,9 @@
  *   When the order arrives later (refund batches are not ordered by anything useful, F4), the refund moves to
  *   its channel on the next rebuild and the quarantine entry is released.
  * - A revenue day is 'complete' only if every expected orders/refunds delivery covering it has loaded.
+ * - Everything groups by posting_day (migration 003), which staging sets from the tenant's late_arrivals
+ *   policy. Under freeze a late record lands on its arrival day, so a reported day is never rebuilt with
+ *   new content and no restatement is written; the record is listed in mart.late_postings instead.
  */
 import type { Tx } from './db.ts';
 import { withTenant } from './db.ts';
@@ -41,7 +44,9 @@ export async function buildMarts(ctx: RunCtx): Promise<MartStats> {
   const tenantId = ctx.tenant.id;
   const stats: MartStats = { daysRebuilt: 0, rowsWritten: 0, restatements: 0, orphanRefunds: 0, orphansResolved: 0, incompleteDays: 0 };
   await withTenant(tenantId, async (tx) => {
-    stats.orphansResolved = await releaseResolvedRefunds(tx, tenantId);
+    // Under freeze the hold is released (the order exists now) but the refund's day is not rebuilt for it:
+    // re-attributing would change a closed day's channel split. It moves only if the day is rebuilt for another reason.
+    stats.orphansResolved = await releaseResolvedRefunds(tx, tenantId, ctx.tenant.policies.late_arrivals === 'restate');
     stats.orphanRefunds = await quarantineOrphanRefunds(tx, tenantId);
   });
   const dirty = await withTenant(tenantId, async (tx) => (await tx.query<{ day: string; sources: string[] }>(
@@ -108,11 +113,11 @@ const REVENUE: MartSpec = {
     return (await tx.query<MetricRow>(
       `WITH o AS (
          SELECT channel, count(*)::int AS orders, sum(gross) AS gross
-         FROM stg.orders WHERE tenant_id = $1 AND (created_at AT TIME ZONE 'UTC')::date = $2::date GROUP BY channel),
+         FROM stg.orders WHERE tenant_id = $1 AND posting_day = $2::date GROUP BY channel),
        r AS (
          SELECT coalesce(ord.channel, 'unattributed') AS channel, sum(rf.amount) AS refunds
          FROM stg.refunds rf LEFT JOIN stg.orders ord ON ord.tenant_id = rf.tenant_id AND ord.order_id = rf.order_id
-         WHERE rf.tenant_id = $1 AND (rf.refunded_at AT TIME ZONE 'UTC')::date = $2::date GROUP BY 1)
+         WHERE rf.tenant_id = $1 AND rf.posting_day = $2::date GROUP BY 1)
        SELECT coalesce(o.channel, r.channel) AS dimension, coalesce(o.orders, 0) AS orders,
               coalesce(o.gross, 0)::numeric(14,2)::text AS gross, coalesce(r.refunds, 0)::numeric(14,2)::text AS refunds,
               (coalesce(o.gross, 0) - coalesce(r.refunds, 0))::numeric(14,2)::text AS net
@@ -147,7 +152,7 @@ const EMAIL: MartSpec = {
               count(*) FILTER (WHERE type = 'open')::int        AS opens,
               count(*) FILTER (WHERE type = 'click')::int       AS clicks,
               count(*) FILTER (WHERE type = 'unsubscribe')::int AS unsubscribes
-       FROM stg.email_events WHERE tenant_id = $1 AND (occurred_at AT TIME ZONE 'UTC')::date = $2::date
+       FROM stg.email_events WHERE tenant_id = $1 AND posting_day = $2::date
        GROUP BY 1 ORDER BY 1`, [tenantId, day])).rows;
   },
   async current(tx, tenantId, day) {
@@ -177,19 +182,19 @@ async function deliveriesComplete(tx: Tx, tenantId: string, day: string): Promis
   return Number(r.rows[0]?.missing ?? 0) === 0;
 }
 
-/** Refunds that were unattributed and whose order has since arrived: release the hold and dirty the refund's
- *  own day, which nothing else would touch (the order's day is not the refund's day). */
-async function releaseResolvedRefunds(tx: Tx, tenantId: string): Promise<number> {
+/** Refunds that were unattributed and whose order has since arrived: release the hold and, when the policy
+ *  allows the day to change, dirty the refund's own day (the order's arrival dirties the order's day, not this one). */
+async function releaseResolvedRefunds(tx: Tx, tenantId: string, rebuildDay: boolean): Promise<number> {
   const r = await tx.query<{ ref: string }>(
     `DELETE FROM ops.quarantine q
      WHERE q.tenant_id = $1 AND q.source = 'refunds' AND q.reason = 'unresolvable_reference'
        AND EXISTS (SELECT 1 FROM stg.refunds rf JOIN stg.orders o ON o.tenant_id = rf.tenant_id AND o.order_id = rf.order_id
                    WHERE rf.tenant_id = q.tenant_id AND rf.refund_id = q.ref)
      RETURNING q.ref`, [tenantId]);
-  if (r.rows.length) {
+  if (r.rows.length && rebuildDay) {
     await tx.query(
       `INSERT INTO ops.dirty_days (tenant_id, day, sources)
-       SELECT DISTINCT tenant_id, (refunded_at AT TIME ZONE 'UTC')::date, ARRAY['refunds'] FROM stg.refunds
+       SELECT DISTINCT tenant_id, posting_day, ARRAY['refunds'] FROM stg.refunds
        WHERE tenant_id = $1 AND refund_id = ANY($2::text[])
        ON CONFLICT (tenant_id, day) DO UPDATE
        SET sources = (SELECT array_agg(DISTINCT x) FROM unnest(ops.dirty_days.sources || EXCLUDED.sources) AS x)`,

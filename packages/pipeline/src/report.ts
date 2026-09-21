@@ -32,7 +32,7 @@ export function formatRunReport(s: RunStats): string {
   out.push('', 'staging');
   out.push(table(s.stage.map((st) => ({
     source: st.source, files: st.files, inserted: st.inserted, unchanged: st.unchanged, updated: st.updated, conflicts: st.conflicts,
-    quarantined: st.quarantined, released: st.released, dirty_days: st.dirtyDays,
+    quarantined: st.quarantined, released: st.released, posted_late: st.postedLate, dirty_days: st.dirtyDays,
   }))));
   if (s.marts) {
     out.push('', 'marts');

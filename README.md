@@ -22,7 +22,7 @@ npm run ingest -- --tenant northwind
 npm run ingest -- --tenant lumen
 npm run ingest -- --tenant acme     # the third tenant: configuration only, see Tenancy below
 npm run check:deliveries # exit 1: lumen/ad_spend/batch_03 never arrived
-npm test                 # 7 tests against a separate database, ~10 s
+npm test                 # 9 tests against a separate database, ~20 s
 npm run console          # http://localhost:4010
 ```
 
@@ -99,9 +99,9 @@ Adding a client is a YAML file: `docs/ONBOARDING.md`. It has been done once alre
 
 ## What is finished and what is not
 
-Finished and tested: ingestion with file and record idempotency, crash and resume, schema drift by declared alias with quarantine of the unknown, late arrivals with restatements, the delivery check, tenant isolation, the daily revenue and daily email marts, the finance reconciliation check, the console.
+Finished and tested: ingestion with file and record idempotency, crash and resume, schema drift by declared alias with quarantine of the unknown (or a stopped run, per tenant), late arrivals under both policies (`restate` with an audit trail, `freeze` with late records booked on arrival and listed), the delivery check, tenant isolation, the daily revenue and daily email marts, the finance reconciliation check, the console.
 
-Sketched or not built, with the reasoning in `TRADEOFFS.md`: attribution between email campaigns and ad spend (the ids do not join), a scheduler or watcher (runs are invoked), currency conversion (each tenant reports in its own currency), per-chunk lookups in staging (it loads the tenant's existing keys per file, fine at this size), a policy other than "restate" for late arrivals.
+Sketched or not built, with the reasoning in `TRADEOFFS.md`: attribution between email campaigns and ad spend (the ids do not join), a scheduler or watcher (runs are invoked), currency conversion (each tenant reports in its own currency), per-chunk lookups in staging (it loads the tenant's existing keys per file, fine at this size).
 
 ## Layout
 
