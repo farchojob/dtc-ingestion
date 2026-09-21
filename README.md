@@ -59,6 +59,13 @@ The same map, interactive: [`docs/architecture/dtc-ingestion.html`](docs/archite
   <img alt="Architecture: exports and tenant config into the pipeline, the pipeline into four Postgres schemas under row-level security, the console reading them" src="docs/architecture/dtc-ingestion.png">
 </picture></a>
 
+And one run with everything going wrong, as a workflow: [`docs/architecture/dtc-run.html`](docs/architecture/dtc-run.html) ([preview](https://htmlpreview.github.io/?https://github.com/farchojob/dtc-ingestion/blob/main/docs/architecture/dtc-run.html)). The main path across the middle; below it, the five outcomes the pipeline refuses to guess about: a file seen before, a process that dies mid-file, a header nobody declared, a row that cannot be read, a delivery that never arrived. Each is a row you can query.
+
+<a href="docs/architecture/dtc-run.html"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/dtc-run-dark.png">
+  <img alt="Workflow: a delivered file goes through sha256, chunked load, column mapping, upsert and rebuild; each step can send work to a held, skipped or refused lane" src="docs/architecture/dtc-run.png">
+</picture></a>
+
 ## The commands
 
 | Command | What it does |
@@ -121,6 +128,6 @@ config/tenants/*.yaml        what differs per client; _template.yaml for the nex
 packages/pipeline/           the service: src/, migrations/, tests/
 apps/ops-console/            Next.js + shadcn/ui, read-only
 fixtures/                    the task materials, untouched
-docs/                        FINDINGS, PLAN, DECISIONS, QUESTIONS, ONBOARDING; architecture/ (interactive map + source)
+docs/                        FINDINGS, PLAN, DECISIONS, QUESTIONS, ONBOARDING; architecture/ (interactive map and run workflow, with sources)
 .github/workflows/ci.yml     install, migrate, test, smoke-run and build on every push
 ```

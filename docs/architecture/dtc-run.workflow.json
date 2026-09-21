@@ -1,0 +1,336 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "A run when everything goes wrong",
+    "locale": "en",
+    "output": "docs/architecture/dtc-run.html",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "The happy path",
+        "focus": [
+          "file",
+          "hash",
+          "chunks",
+          "aliases",
+          "upsert",
+          "rebuild"
+        ],
+        "note": "Six steps, each idempotent on its own: the run can be repeated at any point and ends in the same state."
+      },
+      {
+        "id": "same-file-twice",
+        "label": "Same file twice",
+        "focus": [
+          "file",
+          "hash",
+          "noop"
+        ],
+        "note": "A file is identified by its content: the second delivery loads nothing, changes nothing, and the report says so."
+      },
+      {
+        "id": "dies-mid-file",
+        "label": "Dies mid-file",
+        "focus": [
+          "chunks",
+          "crash"
+        ],
+        "note": "Rows commit 100 at a time and the load records how far it got; the next run resumes and ends identical to a clean run."
+      },
+      {
+        "id": "drift-and-bad-rows",
+        "label": "Drift and bad rows",
+        "focus": [
+          "aliases",
+          "unknown",
+          "upsert",
+          "quarantine"
+        ],
+        "note": "Declared aliases adapt. Unknown headers and unmapped labels are held with a reason, named in the report, retried on every run."
+      },
+      {
+        "id": "late-and-missing",
+        "label": "Late and missing",
+        "focus": [
+          "upsert",
+          "rebuild",
+          "missing"
+        ],
+        "note": "Late records mark their day dirty; rebuilt days write restatements; the manifest says what never arrived."
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "backend": {
+          "label": "Pipeline step"
+        },
+        "database": {
+          "label": "Postgres write"
+        },
+        "security": {
+          "label": "Held or refused"
+        },
+        "messagebus": {
+          "label": "Failure"
+        },
+        "external": {
+          "label": "Outside the pipeline"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "deliveries",
+      "label": "Deliveries"
+    },
+    {
+      "id": "run",
+      "label": "One run: ingest → stage → marts → check"
+    },
+    {
+      "id": "holds",
+      "label": "Held, skipped or refused",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "arrive",
+      "label": "Arrive",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "load-stage",
+      "label": "Load + stage",
+      "fromCol": 2,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "rebuild-check",
+      "label": "Rebuild + check",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [],
+  "mainPath": [
+    "file",
+    "hash",
+    "chunks",
+    "aliases",
+    "upsert",
+    "rebuild"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "file"
+    ],
+    "allowedTerminals": [
+      "noop",
+      "crash",
+      "unknown",
+      "quarantine",
+      "missing"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "file",
+      "lane": "deliveries",
+      "col": 0,
+      "type": "external",
+      "label": "Export lands",
+      "sublabel": "csv · ndjson",
+      "width": 90
+    },
+    {
+      "id": "hash",
+      "lane": "run",
+      "col": 1,
+      "type": "security",
+      "label": "sha256",
+      "sublabel": "file_loads UNIQUE",
+      "width": 90
+    },
+    {
+      "id": "chunks",
+      "lane": "run",
+      "col": 2,
+      "type": "database",
+      "label": "Load chunks",
+      "sublabel": "100 rows per txn",
+      "width": 90
+    },
+    {
+      "id": "aliases",
+      "lane": "run",
+      "col": 3,
+      "type": "backend",
+      "label": "Map columns",
+      "sublabel": "declared aliases",
+      "width": 90
+    },
+    {
+      "id": "upsert",
+      "lane": "run",
+      "col": 4,
+      "type": "database",
+      "label": "Upsert by key",
+      "sublabel": "content_hash",
+      "width": 90
+    },
+    {
+      "id": "rebuild",
+      "lane": "run",
+      "col": 5,
+      "type": "database",
+      "label": "Rebuild days",
+      "sublabel": "ops.restatements",
+      "width": 90
+    },
+    {
+      "id": "noop",
+      "lane": "holds",
+      "col": 1,
+      "type": "external",
+      "label": "Seen before",
+      "sublabel": "sha256 match: no-op",
+      "width": 90
+    },
+    {
+      "id": "crash",
+      "lane": "holds",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Process dies",
+      "sublabel": "next run resumes",
+      "width": 90
+    },
+    {
+      "id": "unknown",
+      "lane": "holds",
+      "col": 3,
+      "type": "security",
+      "label": "New header",
+      "sublabel": "held, or run stops",
+      "width": 90
+    },
+    {
+      "id": "quarantine",
+      "lane": "holds",
+      "col": 4,
+      "type": "security",
+      "label": "Row held",
+      "sublabel": "retried every run",
+      "width": 90
+    },
+    {
+      "id": "missing",
+      "lane": "holds",
+      "col": 5,
+      "type": "security",
+      "label": "Not arrived",
+      "sublabel": "manifest vs loaded",
+      "width": 90
+    }
+  ],
+  "edges": [
+    {
+      "from": "file",
+      "to": "hash",
+      "variant": "emphasis",
+      "route": "drop",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "from": "hash",
+      "to": "chunks",
+      "variant": "emphasis"
+    },
+    {
+      "from": "hash",
+      "to": "noop",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "from": "chunks",
+      "to": "aliases",
+      "variant": "emphasis",
+      "label": "raw.records"
+    },
+    {
+      "from": "chunks",
+      "to": "crash",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "from": "aliases",
+      "to": "upsert",
+      "variant": "emphasis"
+    },
+    {
+      "from": "aliases",
+      "to": "unknown",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "from": "upsert",
+      "to": "rebuild",
+      "variant": "emphasis",
+      "label": "dirty days"
+    },
+    {
+      "from": "upsert",
+      "to": "quarantine",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "from": "rebuild",
+      "to": "missing",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Numbers from the fixtures",
+      "items": [
+        "14 rows of batch 2 re-sent in batch 3: counted once",
+        "Batch 5, weeks late: 48 restatements with previous, current, cause",
+        "lumen ad_spend batch 3 never arrived: six days NULL, exit 1"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What is never guessed",
+      "items": [
+        "Unknown header: file held, or the run stopped, per tenant",
+        "Unmapped label or bad value: row held with the reason, retried",
+        "Refund before its order: held, released when the order lands"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Replay it yourself",
+      "items": [
+        "npm run demo: batches 1-4, then 5; lumen dies at 500 rows",
+        "--batches and --crash-after-rows are CLI flags, not test doubles",
+        "A second run of any command loads nothing, restates nothing"
+      ]
+    }
+  ]
+}
