@@ -4,12 +4,10 @@ import { Command } from 'commander';
 import { loadConfig, parseTenant, requireTenant } from './config.ts';
 import { closePools } from './db.ts';
 import { migrate } from './migrate.ts';
-import { registerTenant, startRun, finishRun } from './run.ts';
-import { ingestSource, SimulatedCrash, type IngestStats } from './ingest.ts';
-import { stageSource, type StageStats } from './stage.ts';
-import { buildMarts } from './marts.ts';
+import { SimulatedCrash } from './ingest.ts';
+import { runTenant, RunFailed, type Phases } from './pipeline.ts';
 import { checkDeliveries, checkFinance } from './checks.ts';
-import { formatRunReport, table, type RunStats } from './report.ts';
+import { formatRunReport, table } from './report.ts';
 
 const program = new Command().name('dtc').description('Ingestion and modelling for DTC brands: raw → staging → marts, per tenant.');
 
@@ -29,47 +27,22 @@ tenant.command('list').description('tenants the config knows about').action(() =
   console.log(table(Object.values(config.tenants).map((t) => ({ id: t.id, name: t.display_name, currency: t.currency, sources: Object.keys(t.sources).join(', ') }))));
 });
 
-interface RunOpts { tenant: string; source?: string; crashAfterRows?: string; skipMarts?: boolean; only?: string }
+interface RunOpts { tenant: string; source?: string; crashAfterRows?: string; skipMarts?: boolean; only?: string; batches?: string }
 
-async function runPipeline(opts: RunOpts, phases: { ingest: boolean; stage: boolean; marts: boolean }): Promise<void> {
-  const started = Date.now();
+async function runPipeline(opts: RunOpts, phases: Phases): Promise<void> {
   const config = loadConfig();
-  const t = requireTenant(config, opts.tenant);
-  await registerTenant(config, t);
-  const runId = await startRun(t, { ...opts, phases });
-  const sources = Object.values(config.sources).filter((s) => s.source in t.sources && (!opts.source || s.source === opts.source));
-  const stats: RunStats = { tenant: t.id, runId, ingest: [], stage: [], durationMs: 0 };
   try {
-    if (phases.ingest) {
-      for (const s of sources) {
-        const r: IngestStats = await ingestSource({ config, tenant: t, runId }, s, {
-          crashAfterRows: opts.crashAfterRows === undefined ? undefined : Number(opts.crashAfterRows), only: opts.only,
-        });
-        stats.ingest.push(r);
-      }
-    }
-    if (phases.stage) {
-      for (const s of sources) {
-        const r: StageStats = await stageSource({ config, tenant: t, runId }, s);
-        stats.stage.push(r);
-      }
-    }
-    if (phases.marts && !opts.skipMarts) stats.marts = await buildMarts({ config, tenant: t, runId });
-    const deliveries = await checkDeliveries(config, [t.id]);
-    stats.missingDeliveries = deliveries.rows.filter((d) => d.status === 'missing').map((d) => ({ source: d.source, batch: d.batch, covers: d.covers }));
-    stats.durationMs = Date.now() - started;
-    await finishRun(t, runId, 'succeeded', stats);
+    const stats = await runTenant(config, opts.tenant, {
+      source: opts.source, only: opts.only, batches: opts.batches, skipMarts: opts.skipMarts,
+      crashAfterRows: opts.crashAfterRows === undefined ? undefined : Number(opts.crashAfterRows),
+    }, phases);
     console.log(formatRunReport(stats));
   } catch (err) {
-    stats.durationMs = Date.now() - started;
-    await finishRun(t, runId, 'failed', stats, (err as Error).message);
-    console.log(formatRunReport(stats));
-    if (err instanceof SimulatedCrash) {
-      console.error(`\nrun #${runId} FAILED: ${err.message}`);
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
+    if (!(err instanceof RunFailed)) throw err;
+    console.log(formatRunReport(err.stats));
+    console.error(`\nrun #${err.stats.runId} FAILED: ${err.cause.message}`);
+    process.exitCode = 1;
+    if (!(err.cause instanceof SimulatedCrash)) throw err.cause;
   }
 }
 
@@ -77,6 +50,7 @@ const runOptions = (c: Command) => c
   .requiredOption('-t, --tenant <id>', 'tenant id (config/tenants/<id>.yaml)')
   .option('-s, --source <name>', 'only this source')
   .option('--only <path>', 'only this file (path relative to the fixtures dir)')
+  .option('--batches <spec>', 'only these batch numbers, e.g. 1-4 or 2,5 (to replay arrivals in order)')
   .option('--crash-after-rows <n>', 'simulate a process that dies after n rows (for replay tests)')
   .option('--skip-marts', 'do not rebuild marts');
 

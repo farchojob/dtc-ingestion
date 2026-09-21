@@ -36,7 +36,8 @@ export function formatRunReport(s: RunStats): string {
   if (s.marts) {
     out.push('', 'marts');
     out.push(table([{
-      days_rebuilt: s.marts.daysRebuilt, rows_written: s.marts.rowsWritten, restatements: s.marts.restatements, orphan_refunds: s.marts.orphanRefunds, incomplete_days: s.marts.incompleteDays,
+      days_rebuilt: s.marts.daysRebuilt, rows_written: s.marts.rowsWritten, restatements: s.marts.restatements,
+      orphan_refunds: s.marts.orphanRefunds, orphans_resolved: s.marts.orphansResolved, incomplete_days: s.marts.incompleteDays,
     }]));
   }
   if (s.missingDeliveries?.length) {

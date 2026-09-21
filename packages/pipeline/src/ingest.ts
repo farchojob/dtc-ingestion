@@ -20,7 +20,7 @@ import { readColumns, readRows, sha256File, type RawRow } from './parse.ts';
 import { resolveMapping } from './mapping.ts';
 import type { RunCtx } from './run.ts';
 
-const CHUNK = 500;
+const CHUNK = 100;   // rows per transaction; small for the fixtures so a resume point is visible, a knob for real feeds
 
 export class SimulatedCrash extends Error {
   constructor(file: string, rows: number) {
@@ -47,6 +47,17 @@ export interface IngestStats {
 export interface IngestOptions {
   crashAfterRows?: number;   // throw after this many rows in this run; reproduces "a run dies a third of the way through"
   only?: string;             // restrict to one file path (relative to fixtures)
+  batches?: string;          // restrict to batch numbers, e.g. "1-4" or "2,5" (parsed from the file name)
+  counter?: { rows: number }; // shared across sources so crashAfterRows counts rows of the whole run
+}
+
+export function batchAllowed(spec: string | undefined, batch: number | null): boolean {
+  if (!spec) return true;
+  if (batch === null) return false;
+  return spec.split(',').some((part) => {
+    const [lo, hi] = part.split('-').map(Number);
+    return hi === undefined ? batch === lo : batch >= lo! && batch <= hi;
+  });
 }
 
 export async function ingestSource(ctx: RunCtx, spec: SourceSpec, opts: IngestOptions = {}): Promise<IngestStats> {
@@ -54,13 +65,15 @@ export async function ingestSource(ctx: RunCtx, spec: SourceSpec, opts: IngestOp
   const stats: IngestStats = { source: spec.source, files: [], rowsInserted: 0 };
   if (!src) return stats;
   const files = (await fg(src.path, { cwd: ctx.config.fixturesDir, absolute: true })).sort();
-  let rowsThisRun = 0;
+  const counter = opts.counter ?? { rows: 0 };
   for (const file of files) {
     const rel = path.relative(ctx.config.fixturesDir, file);
     if (opts.only && rel !== opts.only) continue;
+    const batchNo = /batch_(\d+)/.exec(path.basename(file))?.[1];
+    if (!batchAllowed(opts.batches, batchNo ? Number(batchNo) : null)) continue;
     const result = await ingestFile(ctx, spec, file, rel, () => {
-      rowsThisRun += 1;
-      if (opts.crashAfterRows !== undefined && rowsThisRun > opts.crashAfterRows) throw new SimulatedCrash(rel, opts.crashAfterRows);
+      counter.rows += 1;
+      if (opts.crashAfterRows !== undefined && counter.rows > opts.crashAfterRows) throw new SimulatedCrash(rel, opts.crashAfterRows);
     });
     stats.files.push(result);
     stats.rowsInserted += result.rowsInserted;
