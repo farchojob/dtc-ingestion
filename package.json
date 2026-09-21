@@ -1,0 +1,26 @@
+{
+  "name": "dtc-ingestion",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ingestion and modelling layer for direct-to-consumer brands: orders, email events, ad spend and refunds, for any number of tenants, into Postgres.",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d --wait",
+    "migrate": "npm run --workspace packages/pipeline migrate",
+    "dtc": "npm run --workspace packages/pipeline --silent dtc --",
+    "ingest": "npm run --workspace packages/pipeline --silent dtc -- run",
+    "check:deliveries": "npm run --workspace packages/pipeline --silent dtc -- check deliveries",
+    "check:finance": "npm run --workspace packages/pipeline --silent dtc -- check finance",
+    "test": "npm run --workspace packages/pipeline test",
+    "typecheck": "npm run --workspace packages/pipeline typecheck",
+    "console": "npm run --workspace apps/console dev"
+  }
+}

@@ -1,0 +1,24 @@
+# Tenant: Lumen. Same shape as northwind.yaml; only the values differ.
+id: lumen
+display_name: Lumen
+currency: EUR
+
+sources:
+  orders:       { path: "lumen/orders/*.csv" }
+  email_events: { path: "lumen/email_events/*.ndjson" }
+  ad_spend:     { path: "lumen/ad_spend/*.csv" }
+  refunds:      { path: "lumen/refunds/*.csv" }
+
+normalize:
+  channel:    { meta: paid_social, google: paid_search, newsletter: email, direct: direct }
+  platform:   { meta: paid_social, google: paid_search, newsletter: email }
+  event_type: { open: open, click: click, delivered: delivered, unsubscribe: unsubscribe }   # source emits OPEN/CLICK; lookups are case-insensitive (F7)
+
+campaign_map: {}
+
+expected_deliveries:
+  manifest: manifest.json
+
+policies:
+  late_arrivals: restate
+  unknown_schema: quarantine

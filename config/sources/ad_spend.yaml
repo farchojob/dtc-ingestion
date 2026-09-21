@@ -1,0 +1,13 @@
+# Daily spend per campaign from the ad platforms.
+source: ad_spend
+format: csv
+natural_key: [spend_date, campaign_id]
+event_time: spend_date
+fields:
+  spend_date:  { from: [date], type: date, required: true }
+  campaign_id: { from: [campaign_id], type: string, required: true }
+  platform:    { from: [platform], type: string, required: true, normalize: platform }
+  # The column was renamed from batch 4 on (F6). Listing both names is the declared drift:
+  # the pipeline adapts, records a schema event naming the alias it used, and the run report shows it.
+  # A header that matches neither name quarantines the file instead.
+  spend:       { from: [spend, cost_usd], type: money, required: true }

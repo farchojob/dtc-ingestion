@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dtc-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dtc
+    ports:
+      - "5433:5432"
+    volumes:
+      - dtc-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dtc"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  dtc-pgdata:

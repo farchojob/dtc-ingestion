@@ -1,0 +1,32 @@
+# Template for onboarding a new client. Copy to config/tenants/<id>.yaml, fill every value,
+# then run: npm run dtc -- tenant validate config/tenants/<id>.yaml
+# Nothing else changes: no code, no migration, no new tables. See docs/ONBOARDING.md.
+
+id: acme                      # lowercase letters, digits, - or _. Becomes tenant_id in every table.
+display_name: Acme
+currency: USD                 # ISO 4217. Orders and refunds are expected in this currency.
+
+sources:                      # globs relative to DTC_FIXTURES_DIR. Drop a source you do not receive.
+  orders:       { path: "acme/orders/*.csv" }
+  email_events: { path: "acme/email_events/*.ndjson" }
+  ad_spend:     { path: "acme/ad_spend/*.csv" }
+  refunds:      { path: "acme/refunds/*.csv" }
+
+# Map the client's raw labels (lowercased) to the canonical vocabulary.
+# Canonical channels/platforms: paid_social, paid_search, email, direct, affiliate, other.
+# Canonical event types: delivered, open, click, unsubscribe, bounce.
+# A raw value that is not listed here quarantines the row and shows up in the run report.
+normalize:
+  channel:    { facebook: paid_social, instagram: paid_social, google: paid_search, email: email, direct: direct }
+  platform:   { facebook: paid_social, google: paid_search, email: email }
+  event_type: { open: open, click: click, delivered: delivered, unsubscribe: unsubscribe }
+
+# Email campaign id -> ad campaign id, when the client can tell you. Leave empty otherwise.
+campaign_map: {}
+
+expected_deliveries:
+  manifest: manifest.json     # a manifest listing what should arrive; entries for this tenant id are used
+
+policies:
+  late_arrivals: restate      # restate: rebuild the day and record the previous number
+  unknown_schema: quarantine  # quarantine: hold files with an unrecognised header; fail: stop the run

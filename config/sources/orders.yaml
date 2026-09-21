@@ -1,0 +1,12 @@
+# One row per order from the storefront.
+source: orders
+format: csv
+natural_key: [order_id]        # replay: a re-delivered order updates this row, never adds one
+event_time: created_at         # the UTC date of this field is the mart day the record touches
+fields:
+  order_id:       { from: [order_id], type: string, required: true }
+  created_at:     { from: [created_at], type: timestamp, required: true }
+  channel:        { from: [channel], type: string, required: true, normalize: channel }
+  gross:          { from: [gross], type: money, required: true }
+  currency:       { from: [currency], type: string, required: true, normalize: uppercase }
+  customer_email: { from: [customer_email], type: string, normalize: lowercase }

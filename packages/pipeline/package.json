@@ -1,0 +1,32 @@
+{
+  "name": "@dtc/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ingestion, staging and marts for the DTC data stack. CLI: dtc.",
+  "bin": {
+    "dtc": "./src/cli.ts"
+  },
+  "scripts": {
+    "dtc": "tsx src/cli.ts",
+    "migrate": "tsx src/cli.ts migrate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.4.7",
+    "fast-glob": "^3.3.3",
+    "pg": "^8.13.1",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

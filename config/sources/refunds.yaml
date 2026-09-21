@@ -1,0 +1,11 @@
+# One row per refund. Not named in the brief; ships in the fixtures; net revenue needs it (D7).
+source: refunds
+format: csv
+natural_key: [refund_id]
+event_time: refunded_at        # a refund lands on the day it was issued, not the day of the order (D5)
+fields:
+  refund_id:   { from: [refund_id], type: string, required: true }
+  refunded_at: { from: [refunded_at], type: timestamp, required: true }
+  order_id:    { from: [order_id], type: string, required: true }   # may point at no order (F9): resolved at mart time
+  amount:      { from: [amount], type: money, required: true }
+  currency:    { from: [currency], type: string, required: true, normalize: uppercase }

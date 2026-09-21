@@ -1,0 +1,11 @@
+# One JSON object per line from the email platform.
+source: email_events
+format: ndjson
+natural_key: [event_id]
+event_time: occurred_at
+fields:
+  event_id:    { from: [event_id], type: string, required: true }
+  occurred_at: { from: [occurred_at], type: timestamp, required: true }   # accepts "…:00Z" and "…:09.534Z" (F8)
+  type:        { from: [type], type: string, required: true, normalize: event_type }
+  email:       { from: [email], type: string, normalize: lowercase }
+  campaign_id: { from: [campaign_id], type: string }

@@ -1,0 +1,26 @@
+# Tenant: Northwind. Everything that differs between clients lives in a file like this one.
+id: northwind
+display_name: Northwind
+currency: USD
+
+sources:                       # paths are globs relative to DTC_FIXTURES_DIR; files load in name order
+  orders:       { path: "northwind/orders/*.csv" }
+  email_events: { path: "northwind/email_events/*.ndjson" }
+  ad_spend:     { path: "northwind/ad_spend/*.csv" }
+  refunds:      { path: "northwind/refunds/*.csv" }
+
+# Raw values are lowercased before lookup. A value with no entry quarantines that row (never a silent 'other').
+normalize:
+  channel:    { facebook: paid_social, google: paid_search, email: email, direct: direct }
+  platform:   { facebook: paid_social, google: paid_search, email: email }
+  event_type: { open: open, click: click, delivered: delivered, unsubscribe: unsubscribe }
+
+# email campaign id -> ad campaign id. Empty until the client supplies it (D10); nothing is guessed.
+campaign_map: {}
+
+expected_deliveries:
+  manifest: manifest.json      # relative to DTC_FIXTURES_DIR; entries for this tenant id are loaded
+
+policies:
+  late_arrivals: restate       # a late record rebuilds its day and leaves a restatement row (D5)
+  unknown_schema: quarantine   # a file whose header matches no declared field set is held, not guessed (D4)
