@@ -63,7 +63,7 @@ Around it: `ops.runs` (every invocation and its stats), `ops.expected_deliveries
 | `npm run check:finance -- --tenant <id>` | the client's `finance_summary.csv` against the marts, day by day |
 | `npm run dtc -- tenant validate <file>` | validate a tenant YAML before it touches anything |
 | `npm run dtc -- tenant list` | tenants the config knows about |
-| `npm run console` | the read-only console: deliveries, runs, daily revenue, restatements, holds, per tenant |
+| `npm run console` | the read-only console at :4010: deliveries, runs, daily revenue, restatements, holds, per tenant |
 
 ## What to look at in the run report
 
@@ -80,6 +80,15 @@ After `npm run ingest -- --tenant northwind --batches 1-4` and then a full run:
 After `npm run ingest -- --tenant lumen`:
 
 - `expected but not arrived: ad_spend batch 3`. Those six days have `spend = NULL` and `complete = false` in `mart.daily_marketing`, not zero.
+
+## The console
+
+`npm run console` serves a read-only console at http://localhost:4010: one card per tenant, then deliveries, runs, daily revenue, restatements and holds per tenant. It is server-rendered Next.js with shadcn/ui, reads through the same `withTenant()` as the pipeline (as `app_rw`, under row-level security), and ships no client JavaScript beyond navigation. Light and dark are both authored; the switch is a link that sets a cookie.
+
+| | |
+|---|---|
+| ![Tenants](docs/console/home.png) | ![Deliveries](docs/console/deliveries.png) |
+| ![Restatements](docs/console/restatements.png) | ![Holds, dark](docs/console/holds-dark.png) |
 
 ## Tenancy
 

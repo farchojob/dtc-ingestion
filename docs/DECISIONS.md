@@ -85,3 +85,7 @@ Taken after the first end-to-end run. The 24 late events in northwind's batch 5 
 ## D15. Commit chunks of 100 rows
 
 The fixtures are small enough that a 500-row chunk commits most files whole, which makes a resumed load look like a restart. 100 keeps the resume point visible (the crash test resumes batch_02 from line 100) at no cost here. For a real feed this is a tuning knob, not a design choice.
+
+## D16. The console's look is a token layer over shadcn, with no client state
+
+Taken when the console got its design pass. Chosen: fourteen CSS custom properties (two surfaces, three inks, two hairlines, three status colours, a hover band, a code background) authored for light and dark and mapped onto shadcn's variables, so `Badge`, `Card`, `Table` and `Skeleton` take the look without per-component overrides; system font stacks; every state a dot plus its word; negatives in parentheses; `table-layout: fixed` with explicit column widths. Rejected: Radix `Tabs` for the sub navigation (it is navigation between routes, so it is links), a client theme toggle (the theme is a cookie set by a route handler and read on the server, so the class is on `<html>` before paint), a client-side expand for hold details (the open row is a query parameter, so the page stays a server component and the URL is shareable). Why: the brief is a data pipeline, not a web app; the console exists to make the demo legible, and every piece of client JavaScript would have been weight without a reader.

@@ -1,32 +1,44 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { headers } from "next/headers";
 import "./globals.css";
-import { listTenants } from "@/lib/db";
+import { listTenants, type Tenant } from "@/lib/db";
+import { currentTheme } from "@/lib/theme";
+import { Container, Notice, RoleStrip, TopBar } from "@/components/console/chrome";
 
 export const metadata: Metadata = {
   title: "dtc · ops console",
-  description: "Deliveries, runs, restatements and quarantine for every tenant, read through row-level security.",
+  description: "Deliveries, runs, restatements and holds for every tenant, read through row-level security.",
 };
 
 export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const tenants = await listTenants().catch(() => []);
+  const theme = await currentTheme();
+  const path = (await headers()).get("x-pathname") ?? "/";
+  let tenants: Tenant[] | null = null;
+  let dbError: string | null = null;
+  try {
+    tenants = await listTenants();
+  } catch (err) {
+    dbError = (err as Error).message;
+  }
+  const active = tenants?.find((t) => path.startsWith(`/${t.id}/`))?.id;
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full bg-background text-foreground">
-        <header className="border-b">
-          <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
-            <Link href="/" className="font-semibold tracking-tight">dtc · ops console</Link>
-            <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-              {tenants.map((t) => (
-                <Link key={t.id} href={`/${t.id}/deliveries`} className="hover:text-foreground">{t.display_name}</Link>
-              ))}
-            </nav>
-            <span className="ml-auto text-xs text-muted-foreground">read-only · app_rw role · row-level security</span>
-          </div>
-        </header>
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    <html lang="en" className={theme ?? undefined}>
+      <body className="flex min-h-screen flex-col">
+        <TopBar tenants={tenants ?? []} active={active} theme={theme} back={path} />
+        <div className="grow">
+          {tenants ? children : (
+            <Container className="py-16">
+              <Notice title="The database is not reachable" commands={["cp .env.example .env", "npm run db:up && npm run migrate"]}>
+                {dbError ?? "Connection failed."} The console reads through <span className="font-mono">APP_DATABASE_URL</span> in <span className="font-mono">.env</span>.
+              </Notice>
+            </Container>
+          )}
+        </div>
+        <footer className="md:hidden">
+          <Container className="py-8"><RoleStrip /></Container>
+        </footer>
       </body>
     </html>
   );

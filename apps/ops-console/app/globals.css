@@ -4,11 +4,116 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ------------------------------------------------------------------ design tokens (handoff §1)
+   Two surfaces: --canvas for page chrome, --panel for cards, tables and code. Contrast is measured
+   against the surface the text sits on. Both themes are authored; nothing is an automatic flip. */
+:root {
+  --canvas: #f5f5f3;
+  --panel: #ffffff;
+  --ink: #131311;
+  --ink-2: #43433d;
+  --ink-muted: #6e6e66;
+  --hairline: #e7e7e2;
+  --hairline-2: #d7d7d1;
+  --fill: #dbdbd5;
+  --st-bad: #b42318;
+  --st-ok: #0a7346;
+  --st-warn: #a65d07;
+  --row-hover: #fafaf8;
+  --code-bg: #f7f7f5;
+}
+
+.dark {
+  --canvas: #0a0a09;
+  --panel: #121211;
+  --ink: #f4f4f1;
+  --ink-2: #c2c2bb;
+  --ink-muted: #97978e;
+  --hairline: #242422;
+  --hairline-2: #32322e;
+  --fill: #3a3a36;
+  --st-bad: #f97066;
+  --st-ok: #44d08a;
+  --st-warn: #f2a93b;
+  --row-hover: #171715;
+  --code-bg: #171715;
+}
+
+/* No cookie yet: follow the OS. A .light or .dark class on <html> (set from the cookie) wins. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --canvas: #0a0a09;
+    --panel: #121211;
+    --ink: #f4f4f1;
+    --ink-2: #c2c2bb;
+    --ink-muted: #97978e;
+    --hairline: #242422;
+    --hairline-2: #32322e;
+    --fill: #3a3a36;
+    --st-bad: #f97066;
+    --st-ok: #44d08a;
+    --st-warn: #f2a93b;
+    --row-hover: #171715;
+    --code-bg: #171715;
+  }
+}
+
+/* shadcn's variables, pointed at the tokens so its components take the console's look. */
+:root,
+.dark,
+:root:not(.light) {
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--panel);
+  --secondary: var(--row-hover);
+  --secondary-foreground: var(--ink);
+  --muted: var(--row-hover);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--row-hover);
+  --accent-foreground: var(--ink);
+  --destructive: var(--st-bad);
+  --border: var(--hairline);
+  --input: var(--hairline-2);
+  --ring: var(--hairline-2);
+  --radius: 10px;
+  --chart-1: var(--fill);
+  --chart-2: var(--ink-muted);
+  --chart-3: var(--ink-2);
+  --chart-4: var(--ink);
+  --chart-5: var(--st-ok);
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--panel);
+  --sidebar-accent: var(--row-hover);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--hairline);
+  --sidebar-ring: var(--hairline-2);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-muted: var(--ink-muted);
+  --color-hairline: var(--hairline);
+  --color-hairline-2: var(--hairline-2);
+  --color-fill: var(--fill);
+  --color-st-bad: var(--st-bad);
+  --color-st-ok: var(--st-ok);
+  --color-st-warn: var(--st-warn);
+  --color-row-hover: var(--row-hover);
+  --color-code-bg: var(--code-bg);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -39,92 +144,90 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
-
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+  --radius-4xl: 24px;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
-    @apply font-sans;
+    background: var(--canvas);
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not(.light) {
+      color-scheme: dark;
+    }
+  }
+  body {
+    @apply font-sans antialiased;
+    background: var(--canvas);
+    color: var(--ink);
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+@layer components {
+  /* 11px mono uppercase, +0.07em: eyebrows, table heads, the role strip */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+  /* every number, including run numbers in prose */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+  /* the state dot: 6px, always beside its word */
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+    background: var(--fill);
+  }
+  /* schema alias used: a mark, not a colour */
+  .alias-mark {
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--ink-muted);
+    transform: rotate(45deg);
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  /* direction of a change, in neutral ink */
+  .caret {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    margin-right: 9px;
+    position: relative;
+    top: -1px;
+  }
+  .caret-up {
+    border-bottom: 6px solid var(--ink-2);
+  }
+  .caret-down {
+    border-top: 6px solid var(--ink-2);
   }
 }
