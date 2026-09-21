@@ -1,0 +1,26 @@
+# Tenant: Acme. Onboarded from _template.yaml with no code changes (see docs/ONBOARDING.md).
+id: acme
+display_name: Acme
+currency: GBP
+
+sources:
+  orders:       { path: "acme/orders/*.csv" }
+  email_events: { path: "acme/email_events/*.ndjson" }
+  ad_spend:     { path: "acme/ad_spend/*.csv" }
+  refunds:      { path: "acme/refunds/*.csv" }
+
+# Acme's storefront labels, lowercased, mapped to the canonical vocabulary.
+# Anything not listed here is quarantined and named in the run report, never mis-bucketed.
+normalize:
+  channel:    { instagram: paid_social, tiktok: paid_social, search: paid_search, direct: direct, newsletter: email }
+  platform:   { meta: paid_social, tiktok: paid_social, google: paid_search }
+  event_type: { opened: open, clicked: click, delivered: delivered, unsubscribed: unsubscribe }
+
+campaign_map: {}
+
+expected_deliveries:
+  manifest: manifest.json
+
+policies:
+  late_arrivals: restate
+  unknown_schema: quarantine

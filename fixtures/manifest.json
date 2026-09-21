@@ -320,6 +320,70 @@
       "path": "lumen/refunds/batch_05.csv",
       "covers_from": "2026-01-30",
       "covers_to": "2026-02-04"
+    },
+    {
+      "tenant": "acme",
+      "source": "orders",
+      "batch": 1,
+      "path": "acme/orders/batch_01.csv",
+      "covers_from": "2026-02-05",
+      "covers_to": "2026-02-10"
+    },
+    {
+      "tenant": "acme",
+      "source": "orders",
+      "batch": 2,
+      "path": "acme/orders/batch_02.csv",
+      "covers_from": "2026-02-11",
+      "covers_to": "2026-02-16"
+    },
+    {
+      "tenant": "acme",
+      "source": "email_events",
+      "batch": 1,
+      "path": "acme/email_events/batch_01.ndjson",
+      "covers_from": "2026-02-05",
+      "covers_to": "2026-02-10"
+    },
+    {
+      "tenant": "acme",
+      "source": "email_events",
+      "batch": 2,
+      "path": "acme/email_events/batch_02.ndjson",
+      "covers_from": "2026-02-11",
+      "covers_to": "2026-02-16"
+    },
+    {
+      "tenant": "acme",
+      "source": "ad_spend",
+      "batch": 1,
+      "path": "acme/ad_spend/batch_01.csv",
+      "covers_from": "2026-02-05",
+      "covers_to": "2026-02-10"
+    },
+    {
+      "tenant": "acme",
+      "source": "ad_spend",
+      "batch": 2,
+      "path": "acme/ad_spend/batch_02.csv",
+      "covers_from": "2026-02-11",
+      "covers_to": "2026-02-16"
+    },
+    {
+      "tenant": "acme",
+      "source": "refunds",
+      "batch": 1,
+      "path": "acme/refunds/batch_01.csv",
+      "covers_from": "2026-02-05",
+      "covers_to": "2026-02-10"
+    },
+    {
+      "tenant": "acme",
+      "source": "refunds",
+      "batch": 2,
+      "path": "acme/refunds/batch_02.csv",
+      "covers_from": "2026-02-11",
+      "covers_to": "2026-02-16"
     }
   ]
 }
