@@ -159,7 +159,8 @@ test('a renamed column is adapted and reported; an unknown header quarantines th
 
 test('a batch that never arrived is named, its days carry NULL spend, and orphan refunds are unattributed, not lost (D8, D9, F1, F9)', async () => {
   const s = await runTenant(config, 'lumen');
-  expect(s.missingDeliveries).toEqual([{ source: 'ad_spend', batch: 3, covers: '2026-01-18 to 2026-01-23' }]);
+  expect(s.missingDeliveries).toMatchObject([{ source: 'ad_spend', batch: 3, covers: '2026-01-18 to 2026-01-23' }]);
+  expect(s.missingDeliveries![0]!.overdue).toMatch(/^\d+ days$/);   // how long past the window it was meant to cover
   const gap = await withTenant('lumen', (tx) => tx.query<{ day: string; spend: string | null; complete: boolean }>(
     "SELECT day::text AS day, spend, complete FROM mart.daily_marketing WHERE day BETWEEN '2026-01-18' AND '2026-01-23' ORDER BY day"));
   expect(gap.rows).toHaveLength(6);
