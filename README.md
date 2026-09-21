@@ -52,6 +52,13 @@ fixtures/<tenant>/<source>/batch_NN.*       csv or ndjson, as exports land
 
 Around it: `ops.runs` (every invocation and its stats), `ops.expected_deliveries` (the manifest, loaded), `ops.quarantine` (rows and files held with a reason), `ops.schema_events` (aliases used, unknown columns), `ops.conflicts` (a record re-delivered with different content), `ops.dirty_days`, `ops.restatements`.
 
+The same map, interactive: [`docs/architecture/dtc-ingestion.html`](docs/architecture/dtc-ingestion.html) is one self-contained file (open it locally, or [preview it in the browser](https://htmlpreview.github.io/?https://github.com/farchojob/dtc-ingestion/blob/main/docs/architecture/dtc-ingestion.html)) with five guided views: a run phase by phase, where the data lands, the evidence tables, tenancy, the third client. Its source is the JSON next to it, validated and rendered with [Archify](https://github.com/tt-a1i/archify).
+
+<a href="docs/architecture/dtc-ingestion.html"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/dtc-ingestion-dark.png">
+  <img alt="Architecture: exports and tenant config into the pipeline, the pipeline into four Postgres schemas under row-level security, the console reading them" src="docs/architecture/dtc-ingestion.png">
+</picture></a>
+
 ## The commands
 
 | Command | What it does |
@@ -114,6 +121,6 @@ config/tenants/*.yaml        what differs per client; _template.yaml for the nex
 packages/pipeline/           the service: src/, migrations/, tests/
 apps/ops-console/            Next.js + shadcn/ui, read-only
 fixtures/                    the task materials, untouched
-docs/                        FINDINGS, PLAN, DECISIONS, QUESTIONS, ONBOARDING
+docs/                        FINDINGS, PLAN, DECISIONS, QUESTIONS, ONBOARDING; architecture/ (interactive map + source)
 .github/workflows/ci.yml     install, migrate, test, smoke-run and build on every push
 ```

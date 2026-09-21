@@ -1,0 +1,426 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dtc-ingestion: one pipeline, many tenants",
+    "locale": "en",
+    "output": "docs/architecture/dtc-ingestion.html",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "a-run",
+        "label": "A run, phase by phase",
+        "focus": [
+          "cli",
+          "ingest",
+          "stage",
+          "marts",
+          "checks"
+        ],
+        "note": "ingest, stage, marts, checks: each phase is idempotent on its own, so any run can be repeated."
+      },
+      {
+        "id": "where-data-lands",
+        "label": "Where the data lands",
+        "focus": [
+          "deliveries",
+          "raw",
+          "stg",
+          "mart"
+        ],
+        "note": "raw keeps every line as delivered; stg holds one row per natural key; mart holds only rebuilt days."
+      },
+      {
+        "id": "evidence",
+        "label": "Evidence, never silence",
+        "focus": [
+          "stage",
+          "marts",
+          "checks",
+          "ops"
+        ],
+        "note": "Held rows, conflicts, schema events, restatements and missing deliveries are rows you can query."
+      },
+      {
+        "id": "tenancy",
+        "label": "Tenancy the database enforces",
+        "focus": [
+          "raw",
+          "stg",
+          "mart",
+          "ops",
+          "console"
+        ],
+        "note": "Row-level security is forced; app_rw cannot bypass it; withTenant() is the only door in."
+      },
+      {
+        "id": "third-client",
+        "label": "The third client",
+        "focus": [
+          "config",
+          "cli"
+        ],
+        "note": "Acme is one YAML file: currency, paths, label maps, two policies. No code, no migration."
+      }
+    ],
+    "viewBox": [
+      1240,
+      530
+    ]
+  },
+  "components": [
+    {
+      "id": "config",
+      "type": "backend",
+      "label": "Tenant config",
+      "sublabel": "one YAML per client",
+      "pos": [
+        40,
+        10
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "zod"
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "dtc CLI",
+      "sublabel": "run · check · status",
+      "pos": [
+        45,
+        120
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "commander"
+    },
+    {
+      "id": "deliveries",
+      "type": "external",
+      "label": "Client exports",
+      "sublabel": "csv · ndjson · manifest",
+      "pos": [
+        275,
+        10
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "4 sources"
+    },
+    {
+      "id": "ingest",
+      "type": "backend",
+      "label": "ingest",
+      "sublabel": "sha256 · chunks · resume",
+      "pos": [
+        275,
+        120
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "phase 1"
+    },
+    {
+      "id": "stage",
+      "type": "backend",
+      "label": "stage",
+      "sublabel": "aliases · typing · upsert",
+      "pos": [
+        505,
+        120
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "phase 2"
+    },
+    {
+      "id": "marts",
+      "type": "backend",
+      "label": "marts",
+      "sublabel": "dirty days · restatements",
+      "pos": [
+        735,
+        120
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "phase 3"
+    },
+    {
+      "id": "checks",
+      "type": "backend",
+      "label": "checks",
+      "sublabel": "deliveries · freshness",
+      "pos": [
+        965,
+        120
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "phase 4"
+    },
+    {
+      "id": "raw",
+      "type": "database",
+      "label": "raw",
+      "sublabel": "file_loads · records",
+      "pos": [
+        275,
+        280
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "stg",
+      "type": "database",
+      "label": "stg",
+      "sublabel": "one row per natural key",
+      "pos": [
+        505,
+        280
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "mart",
+      "type": "database",
+      "label": "mart",
+      "sublabel": "revenue · email, by day",
+      "pos": [
+        735,
+        280
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "database",
+      "label": "ops",
+      "sublabel": "held rows · restatements",
+      "pos": [
+        965,
+        280
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "console",
+      "type": "frontend",
+      "label": "Ops console",
+      "sublabel": "Next.js · read-only",
+      "pos": [
+        965,
+        430
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "shadcn/ui"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "packages/pipeline · one process per run",
+      "wraps": [
+        "cli",
+        "ingest",
+        "stage",
+        "marts",
+        "checks"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "PostgreSQL 16 · role app_rw, NOBYPASSRLS",
+      "wraps": [
+        "raw",
+        "stg",
+        "mart",
+        "ops"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "row-level security · ENABLE + FORCE on every tenant table",
+      "wraps": [
+        "raw",
+        "stg",
+        "mart",
+        "ops"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "apps/ops-console",
+      "wraps": [
+        "console"
+      ],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "from": "config",
+      "to": "cli",
+      "label": "validated YAML",
+      "labelAt": [
+        177,
+        88
+      ]
+    },
+    {
+      "from": "deliveries",
+      "to": "ingest",
+      "label": "by content hash",
+      "variant": "emphasis",
+      "labelAt": [
+        413,
+        88
+      ]
+    },
+    {
+      "from": "cli",
+      "to": "ingest",
+      "label": "runTenant()",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ingest",
+      "to": "stage",
+      "label": "new loads",
+      "variant": "emphasis"
+    },
+    {
+      "from": "stage",
+      "to": "marts",
+      "label": "dirty days",
+      "variant": "emphasis"
+    },
+    {
+      "from": "marts",
+      "to": "checks",
+      "label": "then verify",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ingest",
+      "to": "raw",
+      "label": "100-row transactions",
+      "variant": "security",
+      "labelAt": [
+        355,
+        226
+      ]
+    },
+    {
+      "from": "stage",
+      "to": "stg",
+      "label": "upsert by natural key",
+      "variant": "security",
+      "labelAt": [
+        585,
+        226
+      ]
+    },
+    {
+      "from": "marts",
+      "to": "mart",
+      "label": "rebuild day × dimension",
+      "variant": "security",
+      "labelAt": [
+        815,
+        226
+      ]
+    },
+    {
+      "from": "marts",
+      "to": "ops",
+      "label": "restatements",
+      "variant": "dashed"
+    },
+    {
+      "from": "checks",
+      "to": "ops",
+      "label": "expected vs loaded",
+      "variant": "security",
+      "labelAt": [
+        1045,
+        226
+      ]
+    },
+    {
+      "from": "mart",
+      "to": "console",
+      "label": "reads under RLS",
+      "variant": "security"
+    },
+    {
+      "from": "ops",
+      "to": "console",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What a run survives",
+      "items": [
+        "Same file twice: sha256 already loaded, nothing changes",
+        "Dies mid-file: next run resumes from rows_committed",
+        "Column renamed: declared alias used, schema event logged",
+        "Records for a reported day: rebuilt, every move restated"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Tenancy",
+      "items": [
+        "tenant_id on every row; RLS enabled and forced, 15 tables",
+        "withTenant(): BEGIN · set_config · COMMIT, the only door",
+        "No context: zero rows. Another tenant: insert refused"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Missing and late",
+      "items": [
+        "Missing batch: check exits 1 and says how overdue",
+        "Missing spend: NULL and complete = false, never zero",
+        "restate or freeze per tenant, decided at staging"
+      ]
+    }
+  ]
+}
