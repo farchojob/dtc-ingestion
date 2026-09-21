@@ -26,7 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={theme ?? undefined}>
       <body className="flex min-h-screen flex-col">
-        <TopBar tenants={tenants ?? []} active={active} theme={theme} back={path} />
+        <TopBar tenants={tenants ?? []} active={active} back={path} />
         <div className="grow">
           {tenants ? children : (
             <Container className="py-16">
