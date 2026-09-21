@@ -8,6 +8,9 @@
  * - A row that cannot be typed, or carries a raw value with no entry in the tenant's normalisation
  *   map, goes to ops.quarantine with the reason and is skipped. The file still completes.
  * - Every inserted or changed row marks its UTC day dirty for the mart build.
+ * - Rows quarantined for a reason that config can fix (an unmapped label, a bad value) are retried on
+ *   every run with the current config; the ones that now map are staged and their hold is released.
+ *   That is what makes "add the label to the tenant file and rerun" true.
  */
 import type { Tx } from './db.ts';
 import { withTenant } from './db.ts';
@@ -32,9 +35,12 @@ export interface StageStats {
   updated: number;
   unchanged: number;
   quarantined: number;
+  released: number;     // previously quarantined rows that map under the current config
   conflicts: number;
   dirtyDays: number;
 }
+
+const RETRIABLE_REASONS = ['unmapped_value', 'bad_value', 'missing_required'];
 
 type Mapped = Record<string, string | null>;
 type RowOutcome = { ok: true; row: Mapped; day: string } | { ok: false; reason: string; detail: unknown; ref: string };
@@ -43,7 +49,7 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
   const tenant = ctx.tenant;
   const table = TABLES[spec.source];
   if (!table) throw new Error(`no staging table declared for source ${spec.source}`);
-  const stats: StageStats = { source: spec.source, files: 0, inserted: 0, updated: 0, unchanged: 0, quarantined: 0, conflicts: 0, dirtyDays: 0 };
+  const stats: StageStats = { source: spec.source, files: 0, inserted: 0, updated: 0, unchanged: 0, quarantined: 0, released: 0, conflicts: 0, dirtyDays: 0 };
   const pending = await withTenant(tenant.id, async (tx) => (await tx.query<{ id: string; schema_version: string; batch: number | null }>(
     "SELECT id, schema_version, batch FROM raw.file_loads WHERE tenant_id = $1 AND source = $2 AND status = 'loaded' AND staged_at IS NULL ORDER BY id",
     [tenant.id, spec.source])).rows);
@@ -95,7 +101,47 @@ export async function stageSource(ctx: RunCtx, spec: SourceSpec): Promise<StageS
     stats.files += 1;
     stats.dirtyDays += dirty.size;
   }
+  await retryQuarantined(ctx, spec, table, stats);
   return stats;
+}
+
+/** Quarantined rows whose reason a config change can fix: map them again; stage and release the ones that now pass. */
+async function retryQuarantined(ctx: RunCtx, spec: SourceSpec, table: TableSpec, stats: StageStats): Promise<void> {
+  const tenant = ctx.tenant;
+  await withTenant(tenant.id, async (tx) => {
+    const held = (await tx.query<{ id: string; file_load_id: string; line_no: number; schema_version: string; payload: Record<string, unknown> }>(
+      `SELECT q.id, q.file_load_id, q.line_no, f.schema_version, r.payload
+       FROM ops.quarantine q
+       JOIN raw.file_loads f ON f.id = q.file_load_id
+       JOIN raw.records r ON r.file_load_id = q.file_load_id AND r.line_no = q.line_no
+       WHERE q.tenant_id = $1 AND q.source = $2 AND q.reason = ANY($3::text[]) ORDER BY q.id`,
+      [tenant.id, spec.source, RETRIABLE_REASONS])).rows;
+    if (!held.length) return;
+    const existing = await existingHashes(tx, tenant.id, table);
+    const dirty = new Set<string>();
+    for (const h of held) {
+      const outcome = mapRow(spec, tenant, h.schema_version, h.payload, `${h.file_load_id}:${h.line_no}`);
+      if (!outcome.ok) continue;
+      const key = table.key.map((k) => outcome.row[k]).join('|');
+      const hash = sha256Json(table.columns.map((c) => outcome.row[c]));
+      if (existing.get(key) !== hash) {
+        await upsert(tx, tenant.id, table, outcome.row, hash, Number(h.file_load_id));
+        existing.set(key, hash);
+        dirty.add(outcome.day);
+      }
+      await tx.query('DELETE FROM ops.quarantine WHERE id = $1', [h.id]);
+      stats.released += 1;
+      stats.inserted += 1;
+    }
+    for (const day of dirty) {
+      await tx.query(
+        `INSERT INTO ops.dirty_days (tenant_id, day, sources) VALUES ($1, $2, ARRAY[$3]::text[])
+         ON CONFLICT (tenant_id, day) DO UPDATE
+         SET sources = (SELECT array_agg(DISTINCT x) FROM unnest(ops.dirty_days.sources || EXCLUDED.sources) AS x), marked_at = now()`,
+        [tenant.id, day, spec.source]);
+    }
+    stats.dirtyDays += dirty.size;
+  });
 }
 
 /** A delivery that arrives makes every day it covers dirty, so `complete` is recomputed even for days it holds no rows for. */

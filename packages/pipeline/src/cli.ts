@@ -1,7 +1,9 @@
 #!/usr/bin/env tsx
 /** dtc: the command line for the pipeline. Every command is safe to run again. */
+import fs from 'node:fs';
+import path from 'node:path';
 import { Command } from 'commander';
-import { loadConfig, parseTenant, requireTenant } from './config.ts';
+import { loadConfig, parseTenant, requireTenant, REPO_ROOT } from './config.ts';
 import { closePools } from './db.ts';
 import { migrate } from './migrate.ts';
 import { SimulatedCrash } from './ingest.ts';
@@ -19,9 +21,18 @@ program.command('migrate').description('apply migrations/*.sql (idempotent)').ac
 const tenant = program.command('tenant').description('tenant configuration');
 tenant.command('validate <file>').description('validate a tenant YAML against the schema and the declared sources').action((file: string) => {
   const config = loadConfig();
-  const t = parseTenant(file, config.sources);
+  const t = parseTenant(resolveUserPath(file), config.sources);
   console.log(`ok: tenant "${t.id}" (${t.display_name}, ${t.currency}), sources: ${Object.keys(t.sources).join(', ')}`);
 });
+
+/** A path typed by the user resolves from where they ran `npm run`, not from the workspace the script lives in. */
+function resolveUserPath(file: string): string {
+  if (path.isAbsolute(file)) return file;
+  for (const base of [process.env.INIT_CWD, process.cwd(), REPO_ROOT]) {
+    if (base && fs.existsSync(path.resolve(base, file))) return path.resolve(base, file);
+  }
+  return path.resolve(process.env.INIT_CWD ?? process.cwd(), file);
+}
 tenant.command('list').description('tenants the config knows about').action(() => {
   const config = loadConfig();
   console.log(table(Object.values(config.tenants).map((t) => ({ id: t.id, name: t.display_name, currency: t.currency, sources: Object.keys(t.sources).join(', ') }))));

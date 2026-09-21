@@ -28,7 +28,7 @@ Fill in:
 | `id` | short, lowercase, stable. It becomes `tenant_id` on every row this client will ever have |
 | `currency` | what their orders and refunds are denominated in |
 | `sources.*.path` | a glob per source, relative to the fixtures directory. Delete a source they do not send |
-| `normalize.channel` | every value their storefront puts in the `channel` column, lowercased, mapped to a canonical channel. If they later invent a new one, rows with it are quarantined and named in the run report; add it here and rerun |
+| `normalize.channel` | every value their storefront puts in the `channel` column, lowercased, mapped to a canonical channel. If they later invent a new one, rows with it are quarantined and named in the run report; add it here and rerun: the next run retries every held row against the current map, stages the ones that now pass and reports them as `released` |
 | `normalize.platform` | same, for the ad platforms |
 | `normalize.event_type` | same, for email event types |
 | `campaign_map` | leave empty unless the client tells you which email campaign corresponds to which ad campaign |

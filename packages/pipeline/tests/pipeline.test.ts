@@ -142,6 +142,15 @@ test('a renamed column is adapted and reported; an unknown header quarantines th
     expect(await adminQuery("SELECT reason, detail->>'value' AS value FROM ops.quarantine WHERE tenant_id = 'northwind' AND source = 'ad_spend'"))
       .toEqual([{ reason: 'unmapped_value', value: 'tiktok' }]);
     expect(await adminQuery("SELECT count(*)::int AS n FROM stg.ad_spend WHERE tenant_id = 'northwind'")).toEqual([{ n: 91 }]);
+
+    // the onboarding fix: add the label to the tenant's map and rerun; the held row is staged and released, nothing else changes
+    const fixed = loadConfig();
+    fixed.tenants.northwind!.normalize.platform.tiktok = 'paid_social';
+    const s3 = await runTenant(fixed, 'northwind', { source: 'ad_spend' });
+    expect(s3.stage[0]).toMatchObject({ files: 0, released: 1, inserted: 1, quarantined: 0 });
+    expect(await adminQuery("SELECT count(*)::int AS n FROM ops.quarantine WHERE tenant_id = 'northwind' AND source = 'ad_spend'")).toEqual([{ n: 0 }]);
+    expect(await adminQuery("SELECT platform, spend::text FROM stg.ad_spend WHERE tenant_id = 'northwind' AND campaign_id = 'cmp_999'"))
+      .toEqual([{ platform: 'paid_social', spend: '2.00' }]);
   } finally {
     delete process.env.DTC_FIXTURES_DIR;
     fs.rmSync(tmp, { recursive: true, force: true });
