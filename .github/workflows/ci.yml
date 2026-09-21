@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dtc
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dtc"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5433/dtc
+      APP_DATABASE_URL: postgres://app_rw:app_rw@localhost:5433/dtc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run migrate
+      - run: npm run typecheck
+      - run: npm test
+      - name: clean-checkout smoke, the same commands the README gives
+        run: |
+          npm run ingest -- --tenant northwind
+          npm run ingest -- --tenant lumen
+          npm run check:deliveries -- --tenant northwind
+          npm run check:finance -- --tenant northwind | tail -2
+      - name: the delivery check must fail for lumen (ad_spend batch 3 never arrived)
+        run: |
+          if npm run check:deliveries -- --tenant lumen; then echo "expected exit 1"; exit 1; fi
+      - run: npm run console:build

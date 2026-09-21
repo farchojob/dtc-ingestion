@@ -1,10 +1,12 @@
 # dtc-ingestion
 
+[![ci](https://github.com/farchojob/dtc-ingestion/actions/workflows/ci.yml/badge.svg)](https://github.com/farchojob/dtc-ingestion/actions/workflows/ci.yml)
+
 The ingestion and modelling layer for a direct-to-consumer brand's data stack: storefront orders, email events, ad spend and refunds, for any number of tenants, into Postgres, with the failures real sources produce handled on purpose: a run that dies halfway, the same file twice, a column renamed mid-series, records for a day that was already reported.
 
 TypeScript and Postgres. One `npm install`, one Docker container, no ORM.
 
-Read in this order: this file (what it does, how to run it), `TRADEOFFS.md` (what was prioritised, what was left, what a third client costs), `docs/FINDINGS.md` (what is wrong with the fixtures, measured), `docs/DECISIONS.md` (every design choice with what it rejected), `docs/ONBOARDING.md` (adding a client without reading the code).
+Read in this order: this file (what it does, how to run it), `TRADEOFFS.md` (what was prioritised, what was left, what a third client costs), `docs/FINDINGS.md` (what is wrong with the fixtures, measured), `docs/DECISIONS.md` (every design choice with what it rejected), `docs/QUESTIONS.md` (what only the client can settle, written as it would be sent), `docs/ONBOARDING.md` (adding a client without reading the code).
 
 ## Run it from a clean checkout
 
@@ -24,6 +26,15 @@ npm run console          # http://localhost:4010
 ```
 
 Every command can be run again. The second `ingest` of the same files loads nothing, changes nothing, restates nothing, and says so.
+
+To see every failure mode at once, replay the deliveries the way they arrived:
+
+```bash
+npm run demo             # reset, migrate, northwind batches 1-4, then batch 5 (late records), lumen crashed mid-file, then resumed
+npm run console
+```
+
+The same commands run on every push in GitHub Actions against a fresh Postgres (`.github/workflows/ci.yml`), including the smoke run and the delivery check that is expected to fail for lumen.
 
 ## What it does
 
@@ -46,6 +57,7 @@ Around it: `ops.runs` (every invocation and its stats), `ops.expected_deliveries
 | `npm run ingest -- --tenant <id>` | ingest → stage → marts → delivery check, and print the run report |
 | `npm run ingest -- --tenant <id> --batches 1-4` | only those batch numbers: replay deliveries in the order they arrived |
 | `npm run ingest -- --tenant <id> --crash-after-rows 500` | die after 500 rows, mid-transaction; the next run resumes from the last committed chunk |
+| `npm run demo` | reset the database and replay both tenants in delivery order, with the crash and the late batch |
 | `npm run dtc -- ingest\|stage\|marts --tenant <id>` | one phase at a time |
 | `npm run check:deliveries` | every batch the manifest promises vs what loaded, all tenants; exit 1 if any is missing |
 | `npm run check:finance -- --tenant <id>` | the client's `finance_summary.csv` against the marts, day by day |
@@ -89,5 +101,6 @@ config/tenants/*.yaml        what differs per client; _template.yaml for the nex
 packages/pipeline/           the service: src/, migrations/, tests/
 apps/ops-console/            Next.js + shadcn/ui, read-only
 fixtures/                    the task materials, untouched
-docs/                        FINDINGS, PLAN, DECISIONS, ONBOARDING
+docs/                        FINDINGS, PLAN, DECISIONS, QUESTIONS, ONBOARDING
+.github/workflows/ci.yml     install, migrate, test, smoke-run and build on every push
 ```
