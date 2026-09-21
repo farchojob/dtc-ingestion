@@ -40,6 +40,7 @@ jobs:
           npm run ingest -- --tenant lumen
           npm run check:deliveries -- --tenant northwind
           npm run check:finance -- --tenant northwind | tail -2
+          npm run status
       - name: the delivery check must fail for lumen (ad_spend batch 3 never arrived)
         run: |
           if npm run check:deliveries -- --tenant lumen; then echo "expected exit 1"; exit 1; fi

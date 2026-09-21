@@ -22,6 +22,7 @@ npm run ingest -- --tenant northwind
 npm run ingest -- --tenant lumen
 npm run ingest -- --tenant acme     # the third tenant: configuration only, see Tenancy below
 npm run check:deliveries # exit 1: lumen/ad_spend/batch_03 never arrived
+npm run status           # one line per tenant
 npm test                 # 9 tests against a separate database, ~20 s
 npm run console          # http://localhost:4010
 ```
@@ -60,7 +61,9 @@ Around it: `ops.runs` (every invocation and its stats), `ops.expected_deliveries
 | `npm run ingest -- --tenant <id> --crash-after-rows 500` | die after 500 rows, mid-transaction; the next run resumes from the last committed chunk |
 | `npm run demo` | reset the database and replay both tenants in delivery order, with the crash and the late batch |
 | `npm run dtc -- ingest\|stage\|marts --tenant <id>` | one phase at a time |
-| `npm run check:deliveries` | every batch the manifest promises vs what loaded, all tenants; exit 1 if any is missing |
+| `npm run check:deliveries` | every batch the manifest promises vs what loaded, all tenants, with how many days a missing one is overdue; exit 1 if any is missing |
+| `npm run check:freshness` | per source: the last day a loaded delivery covers vs the last day promised, and how many batches are missing; exit 1 if any source is behind |
+| `npm run status` | one line per tenant: last run, deliveries, restatements, holds, incomplete days, late postings, revenue |
 | `npm run check:finance -- --tenant <id>` | the client's `finance_summary.csv` against the marts, day by day |
 | `npm run dtc -- tenant validate <file>` | validate a tenant YAML before it touches anything |
 | `npm run dtc -- tenant list` | tenants the config knows about |

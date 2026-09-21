@@ -44,7 +44,8 @@ export async function runTenant(config: Config, tenantId: string, opts: RunOptio
     }
     if (phases.marts && !opts.skipMarts) stats.marts = await buildMarts(ctx);
     const deliveries = await checkDeliveries(config, [t.id]);
-    stats.missingDeliveries = deliveries.rows.filter((d) => d.status === 'missing').map((d) => ({ source: d.source, batch: d.batch, covers: d.covers }));
+    stats.missingDeliveries = deliveries.rows.filter((d) => d.status === 'missing')
+      .map((d) => ({ source: d.source, batch: d.batch, covers: d.covers, overdue: d.overdue_days === null ? undefined : `${d.overdue_days} days` }));
     stats.durationMs = Date.now() - started;
     await finishRun(t, runId, 'succeeded', stats);
     return stats;

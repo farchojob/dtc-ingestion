@@ -19,7 +19,7 @@ I chose these because they are where the fixtures are hardest (F2, F3, F4 in the
 | Staging | finished | declared aliases, typing, per-tenant normalisation, row quarantine with reasons, conflicts kept, dirty days; tests 3 and 6 |
 | Replay and late arrivals | finished | restatements for two stored marts, dimension removal restated to zero, refunds that beat their order released later; both policies (`restate`, `freeze`) as one per-tenant switch decided at staging time; tests 1, 4 and 8 |
 | Tenant isolation | finished | RLS on 15 tables, security_invoker views, one entry point, config-only onboarding; test 5 |
-| Missing deliveries | finished | manifest as expectations, `check deliveries` exits non-zero, NULL spend with `complete = false`; test 7 |
+| Missing deliveries | finished | manifest as expectations, `check deliveries` exits non-zero and says how overdue, `check freshness` per source, `status` per tenant, NULL spend with `complete = false`; test 7 |
 | Daily revenue mart | finished | gross by order day, refunds by refund day attributed to the order's channel, unattributed line, completeness flag |
 | Daily email mart | finished, thin | counts per campaign per day; no rates, no attribution |
 | Marketing mart | a view | spend per campaign per day with completeness; no join to revenue or email (D10) |
@@ -49,7 +49,7 @@ I did it rather than asserting it. Acme (GBP, its own labels) is commit `7238662
 ## With another week
 
 1. A `freeze` variant that also freezes the channel split of refunds resolved later (today the hold is released but the day is left alone), and a per-source policy where a tenant wants orders restated but spend frozen.
-2. Turn the delivery check into freshness monitoring: expected cadence per source, hours since the last file, an alert when a day closes without its batch, and the console showing it.
+2. Run the freshness check on a schedule and route its exit code somewhere a person sees it (today it is a command); add the expected cadence per source so "behind" can be judged before the manifest window closes.
 3. Attribution once the client supplies the campaign map, and ROAS in the marketing mart with the completeness flag propagated (NULL spend stays NULL through the ratio).
 4. Staging at volume: per-chunk existence checks, `COPY` into raw, an index on `(tenant_id, day)` for the marts, and a benchmark on a million-row month.
 5. A restatement report for the client: per day, what moved, by how much, caused by which file, so a number they already used in a meeting comes with its correction attached.

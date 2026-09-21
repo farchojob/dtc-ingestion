@@ -9,7 +9,7 @@ export interface RunStats {
   ingest: IngestStats[];
   stage: StageStats[];
   marts?: MartStats;
-  missingDeliveries?: { source: string; batch: number; covers: string }[];
+  missingDeliveries?: { source: string; batch: number; covers: string; overdue?: string }[];
   durationMs: number;
 }
 

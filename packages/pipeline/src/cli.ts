@@ -8,7 +8,7 @@ import { closePools } from './db.ts';
 import { migrate } from './migrate.ts';
 import { SimulatedCrash } from './ingest.ts';
 import { runTenant, RunFailed, type Phases } from './pipeline.ts';
-import { checkDeliveries, checkFinance } from './checks.ts';
+import { checkDeliveries, checkFinance, checkFreshness, tenantStatus } from './checks.ts';
 import { formatRunReport, table } from './report.ts';
 
 const program = new Command().name('dtc').description('Ingestion and modelling for DTC brands: raw → staging → marts, per tenant.');
@@ -79,9 +79,35 @@ check.command('deliveries').description('every batch the manifest promises vs wh
   .option('-t, --tenant <id>').action(async (opts: { tenant?: string }) => {
     const config = loadConfig();
     const r = await checkDeliveries(config, opts.tenant ? [opts.tenant] : undefined);
-    console.log(table(r.rows.map((x) => ({ tenant: x.tenant, source: x.source, batch: x.batch, covers: x.covers, status: x.status, rows: x.rows ?? '', schema: x.schema ?? '', expected_path: x.expected_path }))));
+    console.log(table(r.rows.map((x) => ({ tenant: x.tenant, source: x.source, batch: x.batch, covers: x.covers, status: x.status, rows: x.rows ?? '', schema: x.schema ?? '',
+      overdue: x.overdue_days === null ? '' : `${x.overdue_days} days`, expected_path: x.expected_path }))));
     console.log(`\n${r.rows.length} expected · ${r.rows.length - r.notLoaded} loaded · ${r.missing} missing`);
     if (r.missing) process.exitCode = 1;
+  });
+check.command('freshness').description('per source: the last day a loaded delivery covers vs the last day promised; exit 1 if any source is behind')
+  .option('-t, --tenant <id>').action(async (opts: { tenant?: string }) => {
+    const config = loadConfig();
+    const rows = await checkFreshness(config, opts.tenant ? [opts.tenant] : undefined);
+    console.log(table(rows.map((x) => ({ tenant: x.tenant, source: x.source, last_covered: x.last_covered ?? 'nothing loaded', expected_through: x.expected_through,
+      behind: x.stale_days ? `${x.stale_days} days` : 'current', missing_batches: x.missing }))));
+    if (rows.some((x) => x.missing > 0)) process.exitCode = 1;
+  });
+
+program.command('status').description('one line per tenant: last run, deliveries, restatements, holds, incomplete days, revenue')
+  .option('-t, --tenant <id>').action(async (opts: { tenant?: string }) => {
+    const config = loadConfig();
+    const ids = opts.tenant ? [opts.tenant] : Object.keys(config.tenants);
+    const rows = [];
+    for (const id of ids) {
+      const s = await tenantStatus(config, requireTenant(config, id));
+      rows.push({
+        tenant: s.tenant, currency: s.currency, last_run: s.last_run ? `#${s.last_run.id} ${s.last_run.status}` : 'never',
+        deliveries: `${s.deliveries.loaded}/${s.deliveries.expected}${s.deliveries.missing ? ` (${s.deliveries.missing} missing)` : ''}`,
+        restatements: s.restatements, held: s.held, incomplete_days: s.incomplete_days, late_postings: s.late_postings,
+        days: s.days, net: s.net, gross: s.gross, refunds: s.refunds,
+      });
+    }
+    console.log(table(rows));
   });
 check.command('finance').description("the client's finance_summary.csv against the marts")
   .requiredOption('-t, --tenant <id>').action(async (opts: { tenant: string }) => {
