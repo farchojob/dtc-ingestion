@@ -1,9 +1,10 @@
-/** Top bar, tenant title row, sub navigation, page container. Navigation is links; no client state. */
+/** Top bar, tenant title row, sub navigation, page container. Navigation is links; the only client state is which tenant link is current. */
 import Link from "next/link";
 import type { Tenant } from "@/lib/db";
 import type { LastRun } from "@/lib/queries";
 import { cn } from "cn";
 import { Chip, LastRunLine } from "./atoms";
+import { TenantNav } from "./tenant-nav";
 import { ThemeSwitch } from "./theme-switch";
 
 export const VIEWS = [
@@ -29,7 +30,7 @@ export function RoleStrip({ className }: { className?: string }) {
   );
 }
 
-export function TopBar({ tenants, active, back }: { tenants: Tenant[]; active?: string; back: string }) {
+export function TopBar({ tenants, back }: { tenants: Tenant[]; back: string }) {
   return (
     <header className="border-b border-hairline">
       <Container className="flex h-14 items-center justify-between gap-6 md:h-16 md:gap-10">
@@ -37,14 +38,7 @@ export function TopBar({ tenants, active, back }: { tenants: Tenant[]; active?: 
           <Link href="/" className="whitespace-nowrap text-[15px] font-semibold tracking-[-0.015em] text-ink">
             dtc<span className="hidden font-normal text-ink-muted md:inline"> · ops console</span>
           </Link>
-          <nav className="flex items-center gap-4 md:gap-6">
-            {tenants.map((t) => (
-              <Link key={t.id} href={`/${t.id}/deliveries`}
-                className={cn("whitespace-nowrap text-[14.5px] tracking-[-0.005em]", t.id === active ? "font-medium text-ink" : "font-normal text-ink-muted hover:text-ink")}>
-                {t.display_name}
-              </Link>
-            ))}
-          </nav>
+          <TenantNav tenants={tenants} />
         </div>
         <div className="flex items-center gap-[10px]">
           <RoleStrip className="hidden md:inline-flex" />

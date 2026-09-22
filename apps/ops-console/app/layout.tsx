@@ -22,11 +22,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   } catch (err) {
     dbError = (err as Error).message;
   }
-  const active = tenants?.find((t) => path.startsWith(`/${t.id}/`))?.id;
   return (
     <html lang="en" className={theme ?? undefined}>
       <body className="flex min-h-screen flex-col">
-        <TopBar tenants={tenants ?? []} active={active} back={path} />
+        <TopBar tenants={tenants ?? []} back={path} />
         <div className="grow">
           {tenants ? children : (
             <Container className="py-16">
