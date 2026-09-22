@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { listTenants } from "@/lib/db";
-import { deliveries, holds, restatements, revenue, runs } from "@/lib/queries";
+import { deliveries, holds, restatements, revenue, runs, type DeliveryRow } from "@/lib/queries";
 import { Container, TenantHeader, VIEWS, type View } from "@/components/console/chrome";
 import { DeliveriesView } from "@/components/console/views/deliveries";
 import { RunsView } from "@/components/console/views/runs";
@@ -27,7 +27,7 @@ export default async function TenantView({ params, searchParams }: { params: Par
     return (
       <>
         <TenantHeader tenant={tenant} view={v} lastRun={d.lastRun}
-          explainer={<>What the manifest promised, against what loaded. {missing ? `${missing === 1 ? "One batch" : `${missing} batches`} of ${d.rows.length} never arrived.` : "Everything arrived."}</>} />
+          explainer={deliveriesExplainer(d.rows, missing)} />
         <Container className="pb-16 pt-10"><DeliveriesView matrix={d.matrix} rows={d.rows} rowsLoaded={d.rowsLoaded} /></Container>
       </>
     );
@@ -71,4 +71,12 @@ export default async function TenantView({ params, searchParams }: { params: Par
       <Container className="pb-16 pt-10"><HoldsView data={h} tenantId={tenant.id} open={open} /></Container>
     </>
   );
+}
+
+function deliveriesExplainer(rows: DeliveryRow[], missing: number): string {
+  const promised = rows.filter((r) => r.expected).length;
+  if (!promised) return `No manifest for this tenant: ${rows.length === 1 ? "the one file" : `the ${rows.length} files`} that loaded, with nothing promised to compare against.`;
+  const unpromised = rows.length - promised;
+  const arrived = missing ? `${missing === 1 ? "One batch" : `${missing} batches`} of ${promised} never arrived.` : "Everything arrived.";
+  return `What the manifest promised, against what loaded. ${arrived}${unpromised ? ` ${unpromised} ${unpromised === 1 ? "file" : "files"} loaded without being in the manifest.` : ""}`;
 }

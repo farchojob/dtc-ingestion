@@ -3,11 +3,11 @@ import { sourcesFromCause } from "./format";
 
 export const SOURCE_ORDER = ["orders", "email_events", "ad_spend", "refunds"];
 export const CHANNEL_ORDER = ["paid_social", "paid_search", "email", "direct", "affiliate", "other", "unattributed"];
-const SOURCE_RANK = `array_position(ARRAY['orders','email_events','ad_spend','refunds'], e.source)`;
+const SOURCE_RANK = `array_position(ARRAY['orders','email_events','ad_spend','refunds'], source)`;
 
 export type DeliveryStatus = "loaded" | "loading" | "quarantined" | "failed" | "missing";
 
-export interface MatrixCell { batch: number; status: DeliveryStatus; rows: number | null; alias: boolean }
+export interface MatrixCell { batch: number; status: DeliveryStatus; rows: number | null; alias: boolean; expected: boolean }
 export interface MatrixRow { source: string; cells: MatrixCell[] }
 
 export interface LastRun { id: number; status: string; finished_at: string | null }
@@ -27,23 +27,35 @@ export interface Overview {
   matrix: MatrixRow[];
 }
 
-/** The manifest against what loaded, as a source × batch grid. Shared by Home (mini bars) and Deliveries. */
-async function matrix(tx: import("./db").Tx): Promise<MatrixRow[]> {
-  const r = await tx.query<{ source: string; batch: number; status: string | null; rows_seen: number | null; schema_version: string | null }>(
-    `SELECT e.source, e.batch, f.status, f.rows_seen, f.schema_version
-     FROM ops.expected_deliveries e
-     LEFT JOIN raw.file_loads f ON f.tenant_id = e.tenant_id AND f.source = e.source AND f.batch = e.batch
-     ORDER BY ${SOURCE_RANK}, e.source, e.batch`);
-  const rows: MatrixRow[] = [];
-  for (const x of r.rows) {
-    let row = rows.find((m) => m.source === x.source);
-    if (!row) { row = { source: x.source, cells: [] }; rows.push(row); }
-    row.cells.push({
-      batch: x.batch, status: (x.status as DeliveryStatus | null) ?? "missing", rows: x.rows_seen,
-      alias: !!x.schema_version && x.schema_version !== "v1",
-    });
+/**
+ * The manifest against what loaded, as a source × batch grid: every batch the manifest promised
+ * (missing when nothing loaded) plus every file that loaded without being promised, so a tenant
+ * with no manifest still shows what arrived instead of an empty page.
+ */
+const UNION = `
+  SELECT coalesce(e.source, f.source) AS source, coalesce(e.batch, f.batch) AS batch,
+         e.batch IS NOT NULL AS expected, e.covers_from::text, e.covers_to::text, coalesce(e.path, f.path) AS path,
+         coalesce(f.status, 'missing') AS status, f.rows_seen, f.schema_version, f.loaded_at::text, f.attempts
+  FROM ops.expected_deliveries e
+  FULL OUTER JOIN raw.file_loads f ON f.tenant_id = e.tenant_id AND f.source = e.source AND f.batch = e.batch
+  WHERE coalesce(e.batch, f.batch) IS NOT NULL`;
+
+async function unionRows(tx: import("./db").Tx): Promise<DeliveryRow[]> {
+  return (await tx.query<DeliveryRow>(`SELECT * FROM (${UNION}) u ORDER BY ${SOURCE_RANK}, source, batch`)).rows;
+}
+
+function toMatrix(rows: DeliveryRow[]): MatrixRow[] {
+  const out: MatrixRow[] = [];
+  for (const x of rows) {
+    let row = out.find((m) => m.source === x.source);
+    if (!row) { row = { source: x.source, cells: [] }; out.push(row); }
+    row.cells.push({ batch: x.batch, status: x.status, rows: x.rows_seen, alias: !!x.schema_version && x.schema_version !== "v1", expected: x.expected });
   }
-  return rows;
+  return out;
+}
+
+async function matrix(tx: import("./db").Tx): Promise<MatrixRow[]> {
+  return toMatrix(await unionRows(tx));
 }
 
 export async function lastRun(tx: import("./db").Tx): Promise<LastRun | null> {
@@ -64,7 +76,7 @@ export async function overview(tenantId: string): Promise<Overview> {
               count(DISTINCT day) FILTER (WHERE NOT complete)::text AS incomplete
        FROM mart.daily_revenue`)).rows[0]!;
     return {
-      expected: cells.length, loaded: cells.filter((c) => c.status === "loaded").length, missing: cells.filter((c) => c.status === "missing").length,
+      expected: cells.filter((c) => c.expected).length, loaded: cells.filter((c) => c.status === "loaded").length, missing: cells.filter((c) => c.status === "missing").length,
       lastRun: await lastRun(tx), restatements: Number(rs.n), holds: Number(q.n),
       days: Number(rev.days), gross: rev.gross, refunds: rev.refunds, net: rev.net, incompleteDays: Number(rev.incomplete), matrix: m,
     };
@@ -72,18 +84,14 @@ export async function overview(tenantId: string): Promise<Overview> {
 }
 
 export interface DeliveryRow {
-  source: string; batch: number; covers_from: string; covers_to: string; path: string; status: DeliveryStatus;
+  source: string; batch: number; expected: boolean; covers_from: string | null; covers_to: string | null; path: string; status: DeliveryStatus;
   rows_seen: number | null; schema_version: string | null; loaded_at: string | null; attempts: number | null;
 }
 
 export async function deliveries(tenantId: string): Promise<{ matrix: MatrixRow[]; rows: DeliveryRow[]; rowsLoaded: number; lastRun: LastRun | null }> {
   return withTenant(tenantId, async (tx) => {
-    const rows = (await tx.query<DeliveryRow>(
-      `SELECT e.source, e.batch, e.covers_from::text, e.covers_to::text, e.path, coalesce(f.status, 'missing') AS status,
-              f.rows_seen, f.schema_version, f.loaded_at::text, f.attempts
-       FROM ops.expected_deliveries e LEFT JOIN raw.file_loads f ON f.tenant_id = e.tenant_id AND f.source = e.source AND f.batch = e.batch
-       ORDER BY ${SOURCE_RANK}, e.source, e.batch`)).rows;
-    return { matrix: await matrix(tx), rows, rowsLoaded: rows.reduce((n, r) => n + (r.status === "loaded" ? r.rows_seen ?? 0 : 0), 0), lastRun: await lastRun(tx) };
+    const rows = await unionRows(tx);
+    return { matrix: toMatrix(rows), rows, rowsLoaded: rows.reduce((n, r) => n + (r.status === "loaded" ? r.rows_seen ?? 0 : 0), 0), lastRun: await lastRun(tx) };
   });
 }
 
